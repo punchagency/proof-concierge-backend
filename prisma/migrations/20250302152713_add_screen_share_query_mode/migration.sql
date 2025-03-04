@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "QueryMode" ADD VALUE 'SCREEN_SHARE';

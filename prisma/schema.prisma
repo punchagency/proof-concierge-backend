@@ -1,0 +1,138 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                   Int            @id @default(autoincrement())
+  username             String         @unique
+  password             String
+  name                 String
+  email                String?
+  role                 UserRole       @default(ADMIN)
+  avatar               String?
+  isActive             Boolean        @default(true)
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+  callRequests         CallRequest[]
+  receivedChatMessages ChatMessage[]  @relation("ReceivedChatMessages")
+  sentChatMessages     ChatMessage[]  @relation("SentChatMessages")
+  assignedQueries      DonorQuery[]   @relation("AssignedToUser")
+  resolvedQueries      DonorQuery[]   @relation("ResolvedByUser")
+  transferredQueries   DonorQuery[]   @relation("TransferredToUser")
+  messages             Message[]
+  notifications        Notification[]
+}
+
+model DonorQuery {
+  id                  Int            @id @default(autoincrement())
+  sid                 String
+  donor               String
+  donorId             String
+  test                String
+  stage               String
+  queryMode           QueryMode      @default(TEXT)
+  device              String
+  status              QueryStatus    @default(IN_PROGRESS)
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+  transferredTo       String?
+  transferredToUserId Int?
+  resolvedById        Int?
+  transferNote        String?
+  assignedToId        Int?
+  callRequests        CallRequest[]
+  chatMessages        ChatMessage[]
+  assignedToUser      User?          @relation("AssignedToUser", fields: [assignedToId], references: [id])
+  resolvedByUser      User?          @relation("ResolvedByUser", fields: [resolvedById], references: [id])
+  transferredToUser   User?          @relation("TransferredToUser", fields: [transferredToUserId], references: [id])
+  messages            Message[]
+  notifications       Notification[]
+  videoSession        VideoSession?
+}
+
+model Message {
+  id          Int        @id @default(autoincrement())
+  content     String
+  senderId    Int?
+  isFromAdmin Boolean    @default(false)
+  createdAt   DateTime   @default(now())
+  queryId     Int
+  query       DonorQuery @relation(fields: [queryId], references: [id], onDelete: Cascade)
+  sender      User?      @relation(fields: [senderId], references: [id])
+}
+
+model ChatMessage {
+  id           Int         @id @default(autoincrement())
+  content      String
+  createdAt    DateTime    @default(now())
+  senderId     Int
+  recipientId  Int?
+  donorQueryId Int?
+  fcmToken     String?
+  donorQuery   DonorQuery? @relation(fields: [donorQueryId], references: [id])
+  recipient    User?       @relation("ReceivedChatMessages", fields: [recipientId], references: [id])
+  sender       User        @relation("SentChatMessages", fields: [senderId], references: [id])
+}
+
+model VideoSession {
+  id        Int        @id @default(autoincrement())
+  roomName  String     @unique
+  roomUrl   String
+  createdAt DateTime   @default(now())
+  endedAt   DateTime?
+  queryId   Int        @unique
+  query     DonorQuery @relation(fields: [queryId], references: [id], onDelete: Cascade)
+}
+
+model Notification {
+  id        Int         @id @default(autoincrement())
+  userId    Int
+  message   String
+  isRead    Boolean     @default(false)
+  createdAt DateTime    @default(now())
+  queryId   Int?
+  query     DonorQuery? @relation(fields: [queryId], references: [id])
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model CallRequest {
+  id        Int        @id @default(autoincrement())
+  adminId   Int
+  message   String?
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  queryId   Int
+  status    String     @default("PENDING")
+  mode      CallMode
+  admin     User       @relation(fields: [adminId], references: [id])
+  query     DonorQuery @relation(fields: [queryId], references: [id], onDelete: Cascade)
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  ADMIN
+}
+
+enum QueryMode {
+  TEXT
+  HUDDLE
+  VIDEO_CALL
+}
+
+enum QueryStatus {
+  IN_PROGRESS
+  PENDING_REPLY
+  RESOLVED
+  TRANSFERRED
+}
+
+enum CallMode {
+  VIDEO
+  AUDIO
+  SCREEN
+}
