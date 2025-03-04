@@ -6,7 +6,8 @@
   "private": true,
   "license": "UNLICENSED",
   "scripts": {
-    "build": "prisma generate && nest build",
+    "prebuild": "npx prisma generate",
+    "build": "nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
     "start:dev": "nest start --watch",
@@ -20,7 +21,7 @@
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "test:daily": "ts-node src/communication/test-daily-api.ts",
     "seed": "ts-node src/database/seed.ts",
-    "postinstall": "prisma generate"
+    "postinstall": "npx prisma generate"
   },
   "dependencies": {
     "@nestjs/axios": "^4.0.0",
@@ -55,7 +56,8 @@
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "typeorm": "^0.3.20",
-    "ws": "^8.18.1"
+    "ws": "^8.18.1",
+    "prisma": "^6.4.1"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",
@@ -103,7 +105,7 @@
     "testEnvironment": "node"
   },
   "engines": {
-    "node": "22.x",
-    "pnpm": "10.5.2"
+    "node": "20.x",
+    "pnpm": "10.1.0"
   }
 }
