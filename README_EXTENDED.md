@@ -19,7 +19,7 @@ This document provides a detailed guide to all the API endpoints in the Proof Co
     - [POST /donor-queries](#post-donor-queries)
     - [GET /donor-queries/:id](#get-donor-queriesid)
     - [GET /donor-queries/user](#get-donor-queriesuser)
-    - [GET /donor-queries/test-user](#get-donor-queriestest-user)
+    - [GET /donor-queries/general](#get-donor-queriesgeneral)
   - [Messages](#messages)
     - [POST /messages](#post-messages)
     - [GET /messages](#get-messages)
@@ -417,19 +417,29 @@ curl --location --request GET 'http://localhost:3000/donor-queries/user?donorId=
 ]
 ```
 
-#### GET /donor-queries/test-user
+#### GET /donor-queries/general
 
-**Purpose:** Retrieve donor queries that are in the "IN_PROGRESS" or "PENDING_REPLY" statuses. Intended for testing/demonstration purposes.
+**Purpose:** Retrieve donor queries that are in the "IN_PROGRESS" or "PENDING_REPLY" statuses.
 
 **Request:**
 
 - **Method:** GET
-- **URL:** `/donor-queries/test-user`
+- **URL:** `/donor-queries/general`
+- **Query Parameters:**
+  - `test` (optional): Filter by test name
+  - `stage` (optional): Filter by stage
+  - `queryMode` (optional): Filter by query mode (EMAIL, CHAT, etc.)
+  - `device` (optional): Filter by device type
+  - `date` (optional): Filter by creation date (format: YYYY-MM-DD)
+
+**Sample Request:**
+
+`GET /donor-queries/general?test=integration-test&stage=follow-up&date=2023-10-11`
 
 **cURL Example:**
 
 ```bash
-curl --location --request GET 'http://localhost:3000/donor-queries/test-user'
+curl --location --request GET 'http://localhost:3000/donor-queries/general?test=integration-test&stage=follow-up'
 ```
 
 **Response:**

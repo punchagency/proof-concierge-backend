@@ -361,4 +361,62 @@ export class DonorQueriesService {
       },
     });
   }
+
+  async findManyByStatusesWithFilters(statuses: QueryStatus[], filterDto: FilterDonorQueriesDto) {
+    const { test, stage, queryMode, device, date } = filterDto;
+    
+    // Build the query conditions
+    const where: any = {
+      status: {
+        in: statuses,
+      },
+    };
+    
+    if (test) {
+      where.test = test;
+    }
+    
+    if (stage) {
+      where.stage = stage;
+    }
+    
+    if (queryMode) {
+      where.queryMode = queryMode;
+    }
+    
+    if (device) {
+      where.device = device;
+    }
+    
+    if (date) {
+      // Create start and end date for the given date (full day)
+      const startDate = new Date(date);
+      startDate.setHours(0, 0, 0, 0);
+      
+      const endDate = new Date(date);
+      endDate.setHours(23, 59, 59, 999);
+      
+      where.createdAt = {
+        gte: startDate,
+        lte: endDate,
+      };
+    }
+    
+    return this.prisma.donorQuery.findMany({
+      where,
+      orderBy: {
+        createdAt: 'desc',
+      },
+      include: {
+        messages: {
+          orderBy: {
+            createdAt: 'asc',
+          },
+        },
+        transferredToUser: true,
+        resolvedByUser: true,
+        assignedToUser: true,
+      },
+    });
+  }
 } 

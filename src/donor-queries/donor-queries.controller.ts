@@ -35,13 +35,13 @@ export class DonorQueriesController {
   }
 
   @Public()
-  @Get('test-user')
-  async getTestUserQueries() {
+  @Get('general')
+  async getGeneralQueries(@Query() filterDto: FilterDonorQueriesDto) {
     // Get all queries that are in progress or pending reply
-    const queries = await this.donorQueriesService.findManyByStatuses([
+    const queries = await this.donorQueriesService.findManyByStatusesWithFilters([
       QueryStatus.IN_PROGRESS,
       QueryStatus.PENDING_REPLY
-    ]);
+    ], filterDto);
     return {
       status: HttpStatus.OK,
       data: queries,
