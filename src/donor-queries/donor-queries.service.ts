@@ -3,7 +3,7 @@ import { PrismaService } from '../database/prisma.service';
 import { CreateDonorQueryDto } from './dto/create-donor-query.dto';
 import { UpdateDonorQueryDto } from './dto/update-donor-query.dto';
 import { FilterDonorQueriesDto } from './dto/filter-donor-queries.dto';
-import { QueryStatus } from '@prisma/client';
+import { QueryStatus, MessageType } from '@prisma/client';
 
 @Injectable()
 export class DonorQueriesService {
@@ -32,14 +32,6 @@ export class DonorQueriesService {
         messages: {
           orderBy: {
             createdAt: 'asc',
-          },
-        },
-        callRequests: {
-          include: {
-            admin: true,
-          },
-          orderBy: {
-            createdAt: 'desc',
           },
         },
       },
@@ -79,6 +71,31 @@ export class DonorQueriesService {
       include: {
         transferredToUser: true,
         resolvedByUser: true,
+      },
+    });
+  }
+
+  async findByUserEmail(email: string) {
+    return this.prisma.donorQuery.findMany({
+      where: { donor: email },
+      include: {
+        transferredToUser: true,
+        resolvedByUser: true,
+        messages: true,
+      },
+    });
+  }
+
+  async findByDonorId(donorId: string) {
+    // This method returns all donor queries along with their associated messages
+    return this.prisma.donorQuery.findMany({
+      where: { donorId },
+      include: {
+        transferredToUser: true,
+        resolvedByUser: true,
+        messages: {
+          orderBy: { createdAt: 'asc' },
+        },
       },
     });
   }
@@ -137,20 +154,14 @@ export class DonorQueriesService {
       throw new Error('Query has no assigned user to send reminder to');
     }
     
-    // In a real application, you would send an email or notification here
-    // For now, we'll just log the reminder
-    console.log(`Sending reminder for query ${id} to ${query.transferredToUser?.name || query.transferredTo}`);
-    if (message) {
-      console.log(`Reminder message: ${message}`);
-    }
-    
-    // Create a notification for the user
+    // Create a system message for the reminder
     if (query.transferredToUserId) {
-      await this.prisma.notification.create({
+      await this.prisma.message.create({
         data: {
-          userId: query.transferredToUserId,
-          message: message || `Reminder for query ${query.id} - ${query.donor}`,
           queryId: query.id,
+          messageType: MessageType.SYSTEM,
+          content: message || `Reminder for query ${query.id} - ${query.donor}`,
+          senderId: query.transferredToUserId,
         },
       });
     }
@@ -307,12 +318,13 @@ export class DonorQueriesService {
         },
       });
 
-      // Create a notification for the query
-      await this.prisma.notification.create({
+      // Create a system message for the query acceptance
+      await this.prisma.message.create({
         data: {
-          userId,
-          message: `You have accepted query #${id} from ${query.donor}`,
           queryId: id,
+          messageType: MessageType.SYSTEM,
+          content: `Query #${id} has been accepted by ${user.name}`,
+          senderId: userId,
         },
       });
 
@@ -342,14 +354,6 @@ export class DonorQueriesService {
         messages: {
           orderBy: {
             createdAt: 'asc',
-          },
-        },
-        callRequests: {
-          include: {
-            admin: true,
-          },
-          orderBy: {
-            createdAt: 'desc',
           },
         },
         // Include assigned admin information

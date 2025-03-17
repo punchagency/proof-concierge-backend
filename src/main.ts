@@ -1,6 +1,6 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import { VersioningType } from '@nestjs/common';
+import { VersioningType, ValidationPipe, BadRequestException } from '@nestjs/common';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -18,6 +18,30 @@ async function bootstrap() {
     prefix: 'api/v',
   });
 
+  // Add global validation pipe with custom error handling
+  app.useGlobalPipes(
+    new ValidationPipe({
+      transform: true,
+      transformOptions: { 
+        enableImplicitConversion: true,
+        exposeDefaultValues: true
+      },
+      whitelist: true,
+      forbidNonWhitelisted: false,
+      enableDebugMessages: true,
+      exceptionFactory: (errors) => {
+        const messages = errors.map(error => ({
+          property: error.property,
+          constraints: error.constraints,
+          value: error.value
+        }));
+        return new BadRequestException({
+          message: 'Validation failed',
+          errors: messages
+        });
+      }
+    }),
+  );
 
   const port = process.env.PORT || 5005;
   await app.listen(port);

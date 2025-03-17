@@ -17,13 +17,10 @@ import { Public } from '../auth/public.decorator';
 export class DonorQueriesController {
   constructor(private readonly donorQueriesService: DonorQueriesService) {}
 
+  @Public()
   @Post()
-  async create(@Body() createDonorQueryDto: CreateDonorQueryDto) {
-    const query = await this.donorQueriesService.create(createDonorQueryDto);
-    return {
-      status: HttpStatus.CREATED,
-      data: query,
-    };
+  async createQuery(@Body() createQueryDto: CreateDonorQueryDto) {
+    return this.donorQueriesService.create(createQueryDto);
   }
 
   @Get()
@@ -49,6 +46,12 @@ export class DonorQueriesController {
       status: HttpStatus.OK,
       data: queries,
     };
+  }
+
+  @Public()
+  @Get('user')
+  async getTicketsForUser(@Query('donorId') donorId: string) {
+    return this.donorQueriesService.findByDonorId(donorId);
   }
 
   @Get('in-progress')
@@ -107,15 +110,21 @@ export class DonorQueriesController {
     };
   }
 
-  @Get(':id')
+  @Get('admin/:id')
   @UseGuards(RolesGuard)
   @Roles('SUPER_ADMIN', 'ADMIN')
-  async findOne(@Param('id') id: string) {
-    const query = await this.donorQueriesService.findOne(+id);
+  async findOne(@Param('id', ParseIntPipe) id: number) {
+    const query = await this.donorQueriesService.findOne(id);
     return {
       status: HttpStatus.OK,
       data: query,
     };
+  }
+
+  @Public()
+  @Get(':id')
+  async getQuery(@Param('id', ParseIntPipe) id: number) {
+    return this.donorQueriesService.findOne(id);
   }
 
   @Patch(':id')

@@ -7,8 +7,6 @@ import { CommunicationModule } from './communication/communication.module';
 import { DonorQueriesModule } from './donor-queries/donor-queries.module';
 import { HealthModule } from './health/health.module';
 import { DatabaseModule } from './database/database.module';
-import { ChatModule } from './chat/chat.module';
-import { MessagesModule } from './messages/messages.module';
 
 @Module({
   imports: [
@@ -22,8 +20,6 @@ import { MessagesModule } from './messages/messages.module';
     CommunicationModule,
     DonorQueriesModule,
     HealthModule,
-    ChatModule,
-    MessagesModule,
   ],
 })
 export class AppModule {}

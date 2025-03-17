@@ -22,7 +22,9 @@ export class CreateDonorQueryDto {
   @IsNotEmpty()
   stage: string;
 
-  @IsEnum(QueryMode)
+  @IsEnum(['TEXT', 'HUDDLE', 'VIDEO_CALL'], {
+    message: 'queryMode must be one of the following values: TEXT, HUDDLE, VIDEO_CALL'
+  })
   queryMode: QueryMode;
 
   @IsString()

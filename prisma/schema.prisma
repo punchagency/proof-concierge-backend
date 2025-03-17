@@ -16,16 +16,15 @@ model User {
   role                 UserRole       @default(ADMIN)
   avatar               String?
   isActive             Boolean        @default(true)
+  fcmToken             String?
   createdAt            DateTime       @default(now())
   updatedAt            DateTime       @updatedAt
-  callRequests         CallRequest[]
-  receivedChatMessages ChatMessage[]  @relation("ReceivedChatMessages")
-  sentChatMessages     ChatMessage[]  @relation("SentChatMessages")
+  sentMessages         Message[]      @relation("SentMessages")
+  receivedMessages     Message[]      @relation("ReceivedMessages")
   assignedQueries      DonorQuery[]   @relation("AssignedToUser")
   resolvedQueries      DonorQuery[]   @relation("ResolvedByUser")
   transferredQueries   DonorQuery[]   @relation("TransferredToUser")
-  messages             Message[]
-  notifications        Notification[]
+  callSessions        CallSession[]
 }
 
 model DonorQuery {
@@ -38,6 +37,7 @@ model DonorQuery {
   queryMode           QueryMode      @default(TEXT)
   device              String
   status              QueryStatus    @default(IN_PROGRESS)
+  fcmToken            String?
   createdAt           DateTime       @default(now())
   updatedAt           DateTime       @updatedAt
   transferredTo       String?
@@ -45,72 +45,62 @@ model DonorQuery {
   resolvedById        Int?
   transferNote        String?
   assignedToId        Int?
-  callRequests        CallRequest[]
-  chatMessages        ChatMessage[]
+  messages            Message[]
   assignedToUser      User?          @relation("AssignedToUser", fields: [assignedToId], references: [id])
   resolvedByUser      User?          @relation("ResolvedByUser", fields: [resolvedById], references: [id])
   transferredToUser   User?          @relation("TransferredToUser", fields: [transferredToUserId], references: [id])
-  messages            Message[]
-  notifications       Notification[]
-  videoSession        VideoSession?
+  callSessions       CallSession[]
 }
 
 model Message {
-  id          Int        @id @default(autoincrement())
-  content     String
-  senderId    Int?
-  isFromAdmin Boolean    @default(false)
-  createdAt   DateTime   @default(now())
+  id            Int       @id @default(autoincrement())
+  content       String
+  queryId       Int?
+  isFromAdmin   Boolean   @default(false)
+  senderId      Int?
+  recipientId   Int?
+  fcmToken      String?
+  callSessionId Int?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  messageType   MessageType @default(QUERY)
+  callMode      CallMode?
+  roomName      String?
+  userToken     String?
+
+  // Relations
+  query         DonorQuery?    @relation(fields: [queryId], references: [id])
+  sender        User?          @relation("SentMessages", fields: [senderId], references: [id])
+  recipient     User?          @relation("ReceivedMessages", fields: [recipientId], references: [id])
+  callSession   CallSession?   @relation(fields: [callSessionId], references: [id])
+
+  @@index([queryId])
+  @@index([senderId])
+  @@index([recipientId])
+  @@index([callSessionId])
+}
+
+model CallSession {
+  id          Int      @id @default(autoincrement())
   queryId     Int
-  query       DonorQuery @relation(fields: [queryId], references: [id], onDelete: Cascade)
-  sender      User?      @relation(fields: [senderId], references: [id])
-}
+  adminId     Int
+  roomName    String   @unique
+  mode        CallMode
+  status      CallStatus
+  startedAt   DateTime?
+  endedAt     DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  userToken   String?
+  adminToken  String?
 
-model ChatMessage {
-  id           Int         @id @default(autoincrement())
-  content      String
-  createdAt    DateTime    @default(now())
-  senderId     Int
-  recipientId  Int?
-  donorQueryId Int?
-  fcmToken     String?
-  donorQuery   DonorQuery? @relation(fields: [donorQueryId], references: [id])
-  recipient    User?       @relation("ReceivedChatMessages", fields: [recipientId], references: [id])
-  sender       User        @relation("SentChatMessages", fields: [senderId], references: [id])
-}
+  // Relations
+  query       DonorQuery @relation(fields: [queryId], references: [id])
+  admin       User       @relation(fields: [adminId], references: [id])
+  messages    Message[]
 
-model VideoSession {
-  id        Int        @id @default(autoincrement())
-  roomName  String     @unique
-  roomUrl   String
-  createdAt DateTime   @default(now())
-  endedAt   DateTime?
-  queryId   Int        @unique
-  query     DonorQuery @relation(fields: [queryId], references: [id], onDelete: Cascade)
-}
-
-model Notification {
-  id        Int         @id @default(autoincrement())
-  userId    Int
-  message   String
-  isRead    Boolean     @default(false)
-  createdAt DateTime    @default(now())
-  queryId   Int?
-  query     DonorQuery? @relation(fields: [queryId], references: [id])
-  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-}
-
-model CallRequest {
-  id        Int        @id @default(autoincrement())
-  adminId   Int
-  message   String?
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
-  queryId   Int
-  status    String     @default("PENDING")
-  mode      CallMode
-  admin     User       @relation(fields: [adminId], references: [id])
-  query     DonorQuery @relation(fields: [queryId], references: [id], onDelete: Cascade)
+  @@index([queryId])
+  @@index([adminId])
 }
 
 enum UserRole {
@@ -135,4 +125,18 @@ enum CallMode {
   VIDEO
   AUDIO
   SCREEN
+}
+
+enum MessageType {
+  QUERY
+  CHAT
+  SYSTEM
+  CALL_STARTED
+  CALL_ENDED
+}
+
+enum CallStatus {
+  CREATED
+  STARTED
+  ENDED
 }

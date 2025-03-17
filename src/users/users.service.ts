@@ -1,6 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, UnauthorizedException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
 import * as argon2 from 'argon2';
+import { UpdateProfileDto } from './dto/update-profile.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 
 @Injectable()
 export class UsersService {
@@ -61,5 +63,55 @@ export class UsersService {
     });
     
     return { id };
+  }
+
+  async updateFcmToken(userId: number, fcmToken: string) {
+    const user = await this.prisma.user.update({
+      where: { id: userId },
+      data: { fcmToken },
+    });
+    
+    return this.prisma.cleanUserData(user);
+  }
+
+  async updateProfile(userId: number, updateProfileDto: UpdateProfileDto) {
+    const user = await this.prisma.user.update({
+      where: { id: userId },
+      data: updateProfileDto,
+    });
+    
+    return this.prisma.cleanUserData(user);
+  }
+
+  async changePassword(userId: number, changePasswordDto: ChangePasswordDto) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+    });
+    
+    if (!user) {
+      throw new NotFoundException(`User with ID ${userId} not found`);
+    }
+    
+    // Verify current password
+    const isPasswordValid = await argon2.verify(user.password, changePasswordDto.currentPassword);
+    
+    if (!isPasswordValid) {
+      throw new UnauthorizedException('Current password is incorrect');
+    }
+    
+    // Check if new password is the same as the current one
+    if (changePasswordDto.currentPassword === changePasswordDto.newPassword) {
+      throw new BadRequestException('New password must be different from the current password');
+    }
+    
+    // Hash and update the new password
+    const hashedPassword = await argon2.hash(changePasswordDto.newPassword);
+    
+    const updatedUser = await this.prisma.user.update({
+      where: { id: userId },
+      data: { password: hashedPassword },
+    });
+    
+    return this.prisma.cleanUserData(updatedUser);
   }
 }
