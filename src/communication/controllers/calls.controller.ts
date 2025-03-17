@@ -22,6 +22,7 @@ import { NotificationsService } from '../../notifications/notifications.service'
 import { MessagesService } from '../services/messages.service';
 import { PrismaService } from '../../database/prisma.service';
 import { StartCallDto } from '../dto/start-call.dto';
+import { Public } from 'src/auth/public.decorator';
 
 @Controller({
   path: 'communication/call',
@@ -190,6 +191,7 @@ export class CallsController {
   }
 
   @Post(':queryId/request')
+  @Public()
   async requestCall(
     @Param('queryId') queryId: string,
     @Body() body: { mode?: CallMode },

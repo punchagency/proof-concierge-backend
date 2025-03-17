@@ -4,11 +4,13 @@ import { CreateDonorQueryDto } from './dto/create-donor-query.dto';
 import { UpdateDonorQueryDto } from './dto/update-donor-query.dto';
 import { FilterDonorQueriesDto } from './dto/filter-donor-queries.dto';
 import { QueryStatus, MessageType } from '@prisma/client';
+import { MessagesService } from '../communication/services/messages.service';
 
 @Injectable()
 export class DonorQueriesService {
   constructor(
     private prisma: PrismaService,
+    private messagesService: MessagesService,
   ) {}
 
   async findAll() {
@@ -40,7 +42,9 @@ export class DonorQueriesService {
 
   async findOne(id: number) {
     const query = await this.prisma.donorQuery.findUnique({ 
-      where: { id },
+      where: { 
+        id: id 
+      },
       include: {
         transferredToUser: true,
         resolvedByUser: true,
@@ -56,9 +60,35 @@ export class DonorQueriesService {
   }
 
   async create(createDonorQueryDto: CreateDonorQueryDto) {
-    return this.prisma.donorQuery.create({
-      data: createDonorQueryDto,
-    });
+    try {
+      // Extract fields from the DTO
+      const { donor, donorId, test, stage, device, content } = createDonorQueryDto;
+      
+      // Use raw SQL to insert the record with only the fields that exist in the database
+      const result = await this.prisma.$queryRaw`
+        INSERT INTO "DonorQuery" ("donor", "donorId", "test", "stage", "device", "createdAt", "updatedAt")
+        VALUES (${donor}, ${donorId}, ${test}, ${stage}, ${device}, NOW(), NOW())
+        RETURNING *
+      `;
+      
+      const query = Array.isArray(result) && result.length > 0 ? result[0] : result;
+      
+      // If content is provided, create a message for the query
+      if (content && query.id) {
+        await this.messagesService.create({
+          content,
+          queryId: query.id,
+          isFromAdmin: false,
+          messageType: MessageType.QUERY
+        });
+      }
+      
+      // Return the first result (should be the only one)
+      return query;
+    } catch (error) {
+      console.error('Error creating donor query:', error);
+      throw error;
+    }
   }
 
   async update(id: number, updateDonorQueryDto: UpdateDonorQueryDto) {
@@ -66,7 +96,9 @@ export class DonorQueriesService {
     await this.findOne(id);
     
     return this.prisma.donorQuery.update({
-      where: { id },
+      where: { 
+        id: id 
+      },
       data: updateDonorQueryDto,
       include: {
         transferredToUser: true,
@@ -87,17 +119,73 @@ export class DonorQueriesService {
   }
 
   async findByDonorId(donorId: string) {
-    // This method returns all donor queries along with their associated messages
-    return this.prisma.donorQuery.findMany({
-      where: { donorId },
-      include: {
-        transferredToUser: true,
-        resolvedByUser: true,
-        messages: {
-          orderBy: { createdAt: 'asc' },
-        },
-      },
-    });
+    try {
+      // Use a minimal query with no select/include to get raw data
+      const queries = await this.prisma.$queryRaw`
+        SELECT dq.*, 
+               ru.id as resolved_by_user_id, ru.username as resolved_by_username, ru.name as resolved_by_name, 
+               ru.email as resolved_by_email, ru.role as resolved_by_role, ru.avatar as resolved_by_avatar,
+               tu.id as transferred_to_user_id, tu.username as transferred_to_username, tu.name as transferred_to_name,
+               tu.email as transferred_to_email, tu.role as transferred_to_role, tu.avatar as transferred_to_avatar
+        FROM "DonorQuery" dq
+        LEFT JOIN "User" ru ON dq."resolvedById" = ru.id
+        LEFT JOIN "User" tu ON dq."transferredToUserId" = tu.id
+        WHERE dq."donorId" = ${donorId}
+      `;
+      
+      // Get messages for each query
+      if (Array.isArray(queries) && queries.length > 0) {
+        for (const query of queries) {
+          const messages = await this.prisma.$queryRaw`
+            SELECT * FROM "Message" WHERE "queryId" = ${query.id} ORDER BY "createdAt" ASC
+          `;
+          query.messages = messages || [];
+          
+          // Format the resolved by user data
+          if (query.resolved_by_user_id) {
+            query.resolvedByUser = {
+              id: query.resolved_by_user_id,
+              username: query.resolved_by_username,
+              name: query.resolved_by_name,
+              email: query.resolved_by_email,
+              role: query.resolved_by_role,
+              avatar: query.resolved_by_avatar
+            };
+          }
+          
+          // Format the transferred to user data
+          if (query.transferred_to_user_id) {
+            query.transferredToUser = {
+              id: query.transferred_to_user_id,
+              username: query.transferred_to_username,
+              name: query.transferred_to_name,
+              email: query.transferred_to_email,
+              role: query.transferred_to_role,
+              avatar: query.transferred_to_avatar
+            };
+          }
+          
+          // Clean up the raw fields
+          delete query.resolved_by_user_id;
+          delete query.resolved_by_username;
+          delete query.resolved_by_name;
+          delete query.resolved_by_email;
+          delete query.resolved_by_role;
+          delete query.resolved_by_avatar;
+          delete query.transferred_to_user_id;
+          delete query.transferred_to_username;
+          delete query.transferred_to_name;
+          delete query.transferred_to_email;
+          delete query.transferred_to_role;
+          delete query.transferred_to_avatar;
+        }
+      }
+      
+      return queries;
+    } catch (error) {
+      console.error('Error fetching donor queries:', error);
+      return []; // Return empty array on error
+    }
   }
 
   async resolveQuery(id: number, resolvedById: number) {
@@ -105,7 +193,9 @@ export class DonorQueriesService {
     await this.findOne(id);
     
     return this.prisma.donorQuery.update({
-      where: { id },
+      where: { 
+        id: id 
+      },
       data: {
         status: QueryStatus.RESOLVED,
         resolvedById,
@@ -116,31 +206,37 @@ export class DonorQueriesService {
     });
   }
 
-  async transferQuery(id: number, transferredToUserId: number, transferNote?: string) {
+  async transferQuery(id: number, transferredToUserId: number, transferredTo: string, transferNote?: string) {
     // Ensure the query exists
     await this.findOne(id);
     
-    // Get the user to maintain backward compatibility with transferredTo field
-    const user = await this.prisma.user.findUnique({
-      where: { id: transferredToUserId },
-    });
-    
-    if (!user) {
-      throw new NotFoundException(`User with ID ${transferredToUserId} not found`);
-    }
-    
     return this.prisma.donorQuery.update({
-      where: { id },
+      where: { 
+        id: id 
+      },
       data: {
         status: QueryStatus.TRANSFERRED,
         transferredToUserId,
-        transferredTo: user.name, // For backward compatibility
+        transferredTo,
         transferNote,
       },
       include: {
         transferredToUser: true,
       },
     });
+  }
+
+  async remove(id: number) {
+    // Ensure the query exists
+    await this.findOne(id);
+    
+    await this.prisma.donorQuery.delete({
+      where: { 
+        id: id 
+      },
+    });
+    
+    return { id };
   }
 
   async sendReminder(id: number, message?: string) {
@@ -168,23 +264,12 @@ export class DonorQueriesService {
     
     // Update the query's updatedAt timestamp
     return this.prisma.donorQuery.update({
-      where: { id },
+      where: { id: query.id },
       data: {}, // Empty update to trigger updatedAt
       include: {
         transferredToUser: true,
       },
     });
-  }
-
-  async remove(id: number) {
-    // Ensure the query exists
-    await this.findOne(id);
-    
-    await this.prisma.donorQuery.delete({
-      where: { id },
-    });
-    
-    return { id };
   }
 
   async findWithFilters(filterDto: FilterDonorQueriesDto) {
@@ -286,13 +371,7 @@ export class DonorQueriesService {
   async acceptQuery(id: number, userId: number) {
     try {
       // Check if the query exists
-      const query = await this.prisma.donorQuery.findUnique({
-        where: { id },
-      });
-
-      if (!query) {
-        throw new Error('Query not found');
-      }
+      const query = await this.findOne(id);
 
       // Check if the query is already resolved or transferred
       if (query.status === 'RESOLVED' || query.status === 'TRANSFERRED') {
@@ -310,7 +389,7 @@ export class DonorQueriesService {
 
       // Update the query status to IN_PROGRESS and assign it to the user
       const updatedQuery = await this.prisma.donorQuery.update({
-        where: { id },
+        where: { id: id },
         data: {
           status: 'IN_PROGRESS',
           assignedToId: userId,
@@ -321,9 +400,9 @@ export class DonorQueriesService {
       // Create a system message for the query acceptance
       await this.prisma.message.create({
         data: {
-          queryId: id,
+          queryId: query.id,
           messageType: MessageType.SYSTEM,
-          content: `Query #${id} has been accepted by ${user.name}`,
+          content: `Query #${query.id} has been accepted by ${user.name}`,
           senderId: userId,
         },
       });

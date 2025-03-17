@@ -15,13 +15,13 @@ Proof Concierge Backend is a NestJS-based backend service designed to power the 
   - **POST `/donor-queries`**: Create a new support ticket. (Public, no authentication required)
   - **GET `/donor-queries/:id`**: Retrieve details of a support ticket by its ID (public).
   - **GET `/donor-queries/user?donorId=...`**: Fetch all support tickets associated with a given donorId.
-  - **GET `/donor-queries/general`**: Retrieve queries that are in-progress or pending reply. Supports filtering by test, stage, queryMode, device, and date.
+  - **GET `/donor-queries/general`**: Retrieve queries that are in-progress. Supports filtering by test, stage, queryMode, device, and date.
 
 - **Protected Endpoints (For Admins/Support Staff):**
   - **GET `/donor-queries`**: List all support tickets.
   - **GET `/donor-queries/admin/:id`**: Retrieve ticket details by ID with enhanced security checks.
   - **GET `/donor-queries/in-progress`**: Get queries with status "IN_PROGRESS" with filter options.
-  - **GET `/donor-queries/pending-reply`**, **`/resolved`**, **`/transferred`**: Endpoints for various query statuses.
+  - **GET `/donor-queries/resolved`**, **`/transferred`**: Endpoints for various query statuses.
   - **PATCH `/donor-queries/:id`**: Update a ticket (change internal notes, status, etc.).
   - **PATCH `/donor-queries/:id/resolve`**: Mark a ticket as resolved.
   - **PATCH `/donor-queries/:id/transfer`**: Transfer a ticket to another admin.
@@ -85,7 +85,7 @@ Proof Concierge Backend is a NestJS-based backend service designed to power the 
 
 - **GET `/donor-queries/user?donorId=...`**: Retrieve all queries for a specific donor. This ties the query to the donorId provided by the client and includes associated chat messages and call requests.
 
-- **GET `/donor-queries/general`**: Retrieve queries that are in the "IN_PROGRESS" or "PENDING_REPLY" statuses. Supports filtering by test, stage, queryMode, device, and date.
+- **GET `/donor-queries/general`**: Retrieve queries that are in-progress. Supports filtering by test, stage, queryMode, device, and date.
 
 ### Protected Endpoints (Require Admin Access)
 
@@ -93,7 +93,7 @@ Proof Concierge Backend is a NestJS-based backend service designed to power the 
 
 - **GET `/donor-queries/admin/:id`**: Retrieve a single query by ID. Uses `ParseIntPipe` for the parameter.
 
-- **GET `/donor-queries/in-progress`**, **`/pending-reply`**, **`/resolved`**, **`/transferred`**: Fetch donor queries filtered by specific statuses with additional filtering options provided via query parameters.
+- **GET `/donor-queries/in-progress`**, **`/resolved`**, **`/transferred`**: Fetch donor queries filtered by specific statuses with additional filtering options provided via query parameters.
 
 - **PATCH `/donor-queries/:id`**: Update a donor query's details.
 

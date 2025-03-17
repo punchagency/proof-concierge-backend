@@ -1,11 +1,7 @@
 import { IsEnum, IsNumber, IsOptional, IsString } from 'class-validator';
-import { QueryMode, QueryStatus } from '@prisma/client';
+import { QueryMode } from '@prisma/client';
 
 export class UpdateDonorQueryDto {
-  @IsString()
-  @IsOptional()
-  sid?: string;
-
   @IsString()
   @IsOptional()
   donor?: string;
@@ -29,10 +25,6 @@ export class UpdateDonorQueryDto {
   @IsString()
   @IsOptional()
   device?: string;
-
-  @IsEnum(QueryStatus)
-  @IsOptional()
-  status?: QueryStatus;
 
   @IsNumber()
   @IsOptional()

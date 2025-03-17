@@ -29,7 +29,7 @@ export const donorQueriesSeed = async (prisma: PrismaClient): Promise<void> => {
       stage: "Clear View Confirmation",
       queryMode: QueryMode.HUDDLE,
       device: "Macbook M1 Pro",
-      status: QueryStatus.PENDING_REPLY,
+      status: QueryStatus.IN_PROGRESS,
       createdAt: new Date("2024-03-15T11:30:00"),
     },
     {
@@ -40,7 +40,7 @@ export const donorQueriesSeed = async (prisma: PrismaClient): Promise<void> => {
       stage: "Step 2 - Clear Mouth",
       queryMode: QueryMode.VIDEO_CALL,
       device: "iPhone 16 Pro Max",
-      status: QueryStatus.PENDING_REPLY,
+      status: QueryStatus.IN_PROGRESS,
       createdAt: new Date("2024-03-15T12:45:00"),
     },
     {
@@ -62,7 +62,7 @@ export const donorQueriesSeed = async (prisma: PrismaClient): Promise<void> => {
       stage: "Step 10 - Verify and Capture Specimen",
       queryMode: QueryMode.HUDDLE,
       device: "MacBook Air M2",
-      status: QueryStatus.PENDING_REPLY,
+      status: QueryStatus.IN_PROGRESS,
       createdAt: new Date("2024-03-15T14:20:00"),
     },
     {
@@ -84,7 +84,7 @@ export const donorQueriesSeed = async (prisma: PrismaClient): Promise<void> => {
       stage: "Step 2 - Clear Mouth",
       queryMode: QueryMode.TEXT,
       device: "Google Pixel 8 Pro",
-      status: QueryStatus.PENDING_REPLY,
+      status: QueryStatus.IN_PROGRESS,
       createdAt: new Date("2024-03-15T15:45:00"),
     },
     {
@@ -106,7 +106,7 @@ export const donorQueriesSeed = async (prisma: PrismaClient): Promise<void> => {
       stage: "Step 10 - Verify and Capture Specimen",
       queryMode: QueryMode.VIDEO_CALL,
       device: "Surface Laptop 5",
-      status: QueryStatus.PENDING_REPLY,
+      status: QueryStatus.IN_PROGRESS,
       createdAt: new Date("2024-03-15T17:15:00"),
     },
     {
@@ -128,7 +128,7 @@ export const donorQueriesSeed = async (prisma: PrismaClient): Promise<void> => {
       stage: "Clear View Confirmation",
       queryMode: QueryMode.HUDDLE,
       device: "Ubuntu Linux 22.04",
-      status: QueryStatus.PENDING_REPLY,
+      status: QueryStatus.IN_PROGRESS,
       createdAt: new Date("2024-03-15T18:45:00"),
     },
   ];

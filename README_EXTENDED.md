@@ -46,7 +46,6 @@ This document provides a detailed guide to all the API endpoints in the Proof Co
     - [GET /donor-queries](#get-donor-queries)
     - [GET /donor-queries/admin/:id](#get-donor-queriesadminid)
     - [GET /donor-queries/in-progress](#get-donor-queriesin-progress)
-    - [GET /donor-queries/pending-reply](#get-donor-queriespending-reply)
     - [GET /donor-queries/resolved](#get-donor-queriesresolved)
     - [GET /donor-queries/transferred](#get-donor-queriestransferred)
     - [PATCH /donor-queries/:id](#patch-donor-queriesid)
@@ -285,14 +284,11 @@ curl --location --request GET 'http://localhost:3000/health/advanced'
 
 ```json
 {
-  "sid": "session123",
   "donor": "john.doe@example.com",
   "donorId": "donor_001",
   "test": "unit-test",
   "stage": "initial",
-  "queryMode": "EMAIL",
   "device": "web",
-  "status": "PENDING_REPLY"
 }
 ```
 
@@ -309,7 +305,7 @@ curl --location --request POST 'http://localhost:3000/donor-queries' \
     "stage": "initial",
     "queryMode": "EMAIL",
     "device": "web",
-    "status": "PENDING_REPLY"
+    "status": "IN_PROGRESS"
 }'
 ```
 
@@ -327,7 +323,7 @@ Returns the created donor query object as stored in the database.
   "stage": "initial",
   "queryMode": "EMAIL",
   "device": "web",
-  "status": "PENDING_REPLY",
+  "status": "IN_PROGRESS",
   "createdAt": "2023-10-10T12:00:00.000Z",
   "updatedAt": "2023-10-10T12:00:00.000Z"
 }
@@ -361,7 +357,7 @@ curl --location --request GET 'http://localhost:3000/donor-queries/123'
   "stage": "initial",
   "queryMode": "EMAIL",
   "device": "web",
-  "status": "PENDING_REPLY",
+  "status": "IN_PROGRESS",
   "messages": [
     // Array of chat messages ordered by createdAt ascending
   ],
@@ -403,7 +399,7 @@ curl --location --request GET 'http://localhost:3000/donor-queries/user?donorId=
     "stage": "initial",
     "queryMode": "EMAIL",
     "device": "web",
-    "status": "PENDING_REPLY",
+    "status": "IN_PROGRESS",
     "messages": [
       // Array of chat messages
     ],
@@ -419,7 +415,7 @@ curl --location --request GET 'http://localhost:3000/donor-queries/user?donorId=
 
 #### GET /donor-queries/general
 
-**Purpose:** Retrieve donor queries that are in the "IN_PROGRESS" or "PENDING_REPLY" statuses.
+**Purpose:** Retrieve donor queries that are in the "IN_PROGRESS" status.
 
 **Request:**
 
@@ -1457,7 +1453,7 @@ curl --location --request GET 'http://localhost:3000/donor-queries' \
         "stage": "initial",
         "queryMode": "EMAIL",
         "device": "web",
-        "status": "PENDING_REPLY",
+        "status": "IN_PROGRESS",
         "messages": [
             // Array of chat messages
         ],
@@ -1497,7 +1493,7 @@ curl --location --request GET 'http://localhost:3000/donor-queries/admin/123' \
     "stage": "initial",
     "queryMode": "EMAIL",
     "device": "web",
-    "status": "PENDING_REPLY",
+    "status": "IN_PROGRESS",
     "messages": [
         // Array of chat messages
     ],
@@ -1536,46 +1532,6 @@ curl --location --request GET 'http://localhost:3000/donor-queries/in-progress' 
         "queryMode": "EMAIL",
         "device": "web",
         "status": "IN_PROGRESS",
-        "messages": [
-            // Array of chat messages
-        ],
-        "callRequests": [
-            // Array of call request objects
-        ],
-        "createdAt": "2023-10-10T12:00:00.000Z",
-        "updatedAt": "2023-10-10T12:00:00.000Z"
-    }
-    // ... Additional queries if applicable
-]
-```
-
-#### GET /donor-queries/pending-reply
-
-**Purpose:** Retrieve donor queries that are in the "PENDING_REPLY" status.
-
-**Request:**
-- **Method:** GET
-- **URL:** `/donor-queries/pending-reply`
-
-**cURL Example:**
-```bash
-curl --location --request GET 'http://localhost:3000/donor-queries/pending-reply' \
---header 'Authorization: Bearer YOUR_TOKEN'
-```
-
-**Response:**
-```json
-[
-    {
-        "id": 123,
-        "sid": "session123",
-        "donor": "john.doe@example.com",
-        "donorId": "donor_001",
-        "test": "unit-test",
-        "stage": "initial",
-        "queryMode": "EMAIL",
-        "device": "web",
-        "status": "PENDING_REPLY",
         "messages": [
             // Array of chat messages
         ],
@@ -1687,7 +1643,7 @@ curl --location --request GET 'http://localhost:3000/donor-queries/transferred' 
     "stage": "updated_initial",
     "queryMode": "updated_EMAIL",
     "device": "updated_web",
-    "status": "updated_PENDING_REPLY"
+    "status": "updated_IN_PROGRESS"
 }
 ```
 
@@ -1704,7 +1660,7 @@ curl --location --request PATCH 'http://localhost:3000/donor-queries/123' \
     "stage": "updated_initial",
     "queryMode": "updated_EMAIL",
     "device": "updated_web",
-    "status": "updated_PENDING_REPLY"
+    "status": "updated_IN_PROGRESS"
 }'
 ```
 
@@ -1719,7 +1675,7 @@ curl --location --request PATCH 'http://localhost:3000/donor-queries/123' \
     "stage": "updated_initial",
     "queryMode": "updated_EMAIL",
     "device": "updated_web",
-    "status": "updated_PENDING_REPLY",
+    "status": "updated_IN_PROGRESS",
     "createdAt": "2023-10-10T12:00:00.000Z",
     "updatedAt": "2023-10-10T12:00:00.000Z"
 }
@@ -1837,7 +1793,7 @@ curl --location --request POST 'http://localhost:3000/donor-queries/123/send-rem
     "stage": "initial",
     "queryMode": "EMAIL",
     "device": "web",
-    "status": "PENDING_REPLY",
+    "status": "IN_PROGRESS",
     "createdAt": "2023-10-10T12:00:00.000Z",
     "updatedAt": "2023-10-10T12:00:00.000Z"
 }
@@ -1952,3 +1908,167 @@ The following endpoints are listed in the Table of Contents but may not be fully
 2. `GET /communication/rooms` - For retrieving a list of all active communication rooms
 
 If you need these functionalities, please check the latest API documentation or contact the development team.
+
+## Database Schema
+
+### Enums
+
+#### QueryStatus
+- `IN_PROGRESS`: Query is currently being processed
+- `RESOLVED`: Query has been resolved
+- `TRANSFERRED`: Query has been transferred to another admin
+
+#### QueryMode
+- `TEXT`: Text-based communication
+- `HUDDLE`: Huddle-based communication
+- `VIDEO_CALL`: Video call communication
+
+#### CallMode
+- `VIDEO`: Video call
+- `AUDIO`: Audio-only call
+- `SCREEN`: Screen sharing
+
+#### CallStatus
+- `CREATED`: Call has been created but not started
+- `STARTED`: Call is in progress
+- `ENDED`: Call has ended
+
+### Models
+
+#### User
+- `id`: Unique identifier (auto-incremented)
+- `username`: Unique username
+- `password`: Hashed password
+- `name`: Full name
+- `email`: Email address (optional)
+- `role`: User role (ADMIN, SUPER_ADMIN)
+- `avatar`: Profile picture (optional)
+- `isActive`: Whether the user is active
+- `fcmToken`: Firebase Cloud Messaging token for notifications (optional)
+- `createdAt`: Creation timestamp
+- `updatedAt`: Last update timestamp
+
+#### DonorQuery
+- `id`: Unique identifier (auto-incremented)
+- `sid`: Session ID (unique)
+- `donor`: Donor name or email
+- `donorId`: Donor ID
+- `test`: Test name
+- `stage`: Test stage
+- `queryMode`: Query mode (TEXT, HUDDLE, VIDEO_CALL)
+- `device`: Device information
+- `status`: Query status (IN_PROGRESS, RESOLVED, TRANSFERRED)
+- `fcmToken`: Firebase Cloud Messaging token for notifications (optional)
+- `createdAt`: Creation timestamp
+- `updatedAt`: Last update timestamp
+- `transferredTo`: Name of the admin the query was transferred to (optional)
+- `transferredToUserId`: ID of the admin the query was transferred to (optional)
+- `resolvedById`: ID of the admin who resolved the query (optional)
+- `transferNote`: Note about the transfer (optional)
+- `assignedToId`: ID of the admin the query is assigned to (optional)
+
+#### Message
+- `id`: Unique identifier (auto-incremented)
+- `content`: Message content
+- `queryId`: ID of the associated donor query (optional)
+- `isFromAdmin`: Whether the message is from an admin
+- `senderId`: ID of the sender (optional)
+- `recipientId`: ID of the recipient (optional)
+- `fcmToken`: Firebase Cloud Messaging token for notifications (optional)
+- `callSessionId`: ID of the associated call session (optional)
+- `createdAt`: Creation timestamp
+- `updatedAt`: Last update timestamp
+- `messageType`: Message type (QUERY, CHAT, SYSTEM, CALL_STARTED, CALL_ENDED)
+- `callMode`: Call mode (VIDEO, AUDIO, SCREEN) (optional)
+- `roomName`: Room name for calls (optional)
+- `userToken`: User token for calls (optional)
+
+#### CallSession
+- `id`: Unique identifier (auto-incremented)
+- `queryId`: ID of the associated donor query
+- `adminId`: ID of the admin who initiated the call
+- `roomName`: Unique room name
+- `mode`: Call mode (VIDEO, AUDIO, SCREEN)
+- `status`: Call status (CREATED, STARTED, ENDED)
+- `startedAt`: When the call started (optional)
+- `endedAt`: When the call ended (optional)
+- `createdAt`: Creation timestamp
+- `updatedAt`: Last update timestamp
+- `userToken`: User token for authentication (optional)
+
+## Database Migration
+
+To apply database schema changes, run:
+
+```bash
+pnpm run db:update-schema
+```
+
+This script will:
+1. Try to apply migrations using Prisma's standard migration process
+2. If that fails, it will fall back to a direct database update using SQL
+3. The script handles existing enum types and ensures compatibility with PostgreSQL
+
+Make sure your `.env` file contains a valid `DATABASE_URL` with the correct credentials:
+
+```
+DATABASE_URL="postgresql://username:password@localhost:5432/database_name"
+```
+
+## Seeding the Database
+
+To seed the database with sample data, run:
+
+```bash
+pnpm run db:seed
+```
+
+This will create:
+- Sample users with different roles
+- Sample donor queries with various statuses (IN_PROGRESS, RESOLVED, TRANSFERRED)
+- Sample messages and call sessions
+
+## Environment Variables
+
+The following environment variables are required:
+
+- `DATABASE_URL`: PostgreSQL connection string
+- `JWT_SECRET`: Secret for JWT token generation
+- `DAILY_API_KEY`: API key for Daily.co video calls
+- `DAILY_DOMAIN`: Domain for Daily.co video calls
+- `FCM_SERVER_KEY`: Firebase Cloud Messaging server key for notifications
+
+Optional environment variables:
+
+- `PORT`: Port to run the server on (default: 3000)
+- `NODE_ENV`: Environment (development, production, test)
+- `LOG_LEVEL`: Logging level (error, warn, info, debug)
+
+## Error Handling
+
+All API endpoints follow a consistent error handling pattern:
+
+- `400 Bad Request`: Invalid input data
+- `401 Unauthorized`: Missing or invalid authentication
+- `403 Forbidden`: Insufficient permissions
+- `404 Not Found`: Resource not found
+- `500 Internal Server Error`: Server-side error
+
+Error responses include:
+- `statusCode`: HTTP status code
+- `message`: Error message
+- `error`: Error type (optional)
+- `details`: Additional error details (optional)
+
+Example error response:
+
+```json
+{
+  "statusCode": 400,
+  "message": "Invalid input data",
+  "error": "Bad Request",
+  "details": {
+    "sid": "sid is required"
+  }
+}
+```

@@ -24,7 +24,8 @@
     "postinstall": "npx prisma generate",
     "update-call-messages": "ts-node src/scripts/update-call-messages.ts",
     "db:clear": "ts-node scripts/clear-data.ts",
-    "db:clear:js": "node scripts/clear-data.js"
+    "db:clear:js": "node scripts/clear-data.js",
+    "db:update-schema": "node scripts/apply-schema-changes.js"
   },
   "dependencies": {
     "@nestjs/axios": "^4.0.0",

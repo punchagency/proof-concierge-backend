@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { NotificationsService } from '../../notifications/notifications.service';
-import { Message, MessageType, CallMode } from '@prisma/client';
+import { Message, MessageType, CallMode, User, UserRole } from '@prisma/client';
 
 export interface CreateMessageDto {
   content: string;
@@ -168,7 +168,6 @@ export class MessagesService {
           query: {
             select: {
               id: true,
-              sid: true,
               donor: true,
               donorId: true,
               test: true,
@@ -203,19 +202,38 @@ export class MessagesService {
       });
       
       // Transform messages to ensure proper formatting and explicit admin status
-      const transformedMessages = messages.map(msg => ({
-        ...msg,
-        isFromAdmin: msg.isFromAdmin || false, // Ensure boolean value
-        sender: msg.sender ? {
-          ...msg.sender,
-          role: msg.sender.role || null,
-          isAdmin: msg.isFromAdmin || false, // Add explicit isAdmin flag
-        } : null,
-        recipient: msg.recipient ? {
-          ...msg.recipient,
-          role: msg.recipient.role || null,
-        } : null,
-      }));
+      const transformedMessages = messages.map(msg => {
+        const result = {
+          ...msg,
+          isFromAdmin: msg.isFromAdmin || false, // Ensure boolean value
+        };
+        
+        // Add sender information if available
+        if (msg.senderId) {
+          result.sender = {
+            id: msg.senderId,
+            name: msg.sender?.name || '',
+            username: msg.sender?.username || '',
+            role: msg.sender?.role || UserRole.ADMIN,
+            avatar: msg.sender?.avatar || null,
+            isActive: msg.sender?.isActive || true
+          };
+        }
+        
+        // Add recipient information if available
+        if (msg.recipientId) {
+          result.recipient = {
+            id: msg.recipientId,
+            name: msg.recipient?.name || '',
+            username: msg.recipient?.username || '',
+            role: msg.recipient?.role || UserRole.ADMIN,
+            avatar: msg.recipient?.avatar || null,
+            isActive: msg.recipient?.isActive || true
+          };
+        }
+        
+        return result;
+      });
       
       return transformedMessages;
     } catch (error) {

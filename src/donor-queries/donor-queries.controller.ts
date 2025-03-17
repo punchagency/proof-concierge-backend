@@ -1,30 +1,33 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, HttpStatus, Query, HttpException, Request, ParseIntPipe } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseGuards, HttpStatus, HttpException, ParseIntPipe } from '@nestjs/common';
 import { DonorQueriesService } from './donor-queries.service';
 import { CreateDonorQueryDto } from './dto/create-donor-query.dto';
 import { UpdateDonorQueryDto } from './dto/update-donor-query.dto';
-import { QueryStatus } from '@prisma/client';
-import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { FilterDonorQueriesDto } from './dto/filter-donor-queries.dto';
-import { RolesGuard } from '../auth/roles.guard';
+import { QueryStatus, User } from '@prisma/client';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Roles } from '../auth/roles.decorator';
 import { Public } from '../auth/public.decorator';
+import { CurrentUser } from '../auth/current-user.decorator';
 
 @Controller({
   path: 'donor-queries',
-  version: '1'
+  version: '1',
 })
 @UseGuards(JwtAuthGuard)
 export class DonorQueriesController {
   constructor(private readonly donorQueriesService: DonorQueriesService) {}
 
-  @Public()
   @Post()
-  async createQuery(@Body() createQueryDto: CreateDonorQueryDto) {
-    return this.donorQueriesService.create(createQueryDto);
+  @Public()
+  async create(@Body() createDonorQueryDto: CreateDonorQueryDto) {
+    const query = await this.donorQueriesService.create(createDonorQueryDto);
+    return {
+      status: HttpStatus.CREATED,
+      data: query,
+    };
   }
 
   @Get()
-  @UseGuards(RolesGuard)
   @Roles('SUPER_ADMIN', 'ADMIN')
   async findAll() {
     const queries = await this.donorQueriesService.findAll();
@@ -34,84 +37,54 @@ export class DonorQueriesController {
     };
   }
 
-  @Public()
-  @Get('general')
-  async getGeneralQueries(@Query() filterDto: FilterDonorQueriesDto) {
-    // Get all queries that are in progress or pending reply
-    const queries = await this.donorQueriesService.findManyByStatusesWithFilters([
-      QueryStatus.IN_PROGRESS,
-      QueryStatus.PENDING_REPLY
-    ], filterDto);
+  @Get('status/:status')
+  @Roles('SUPER_ADMIN', 'ADMIN')
+  async findAllByStatus(@Param('status') status: QueryStatus) {
+    const queries = await this.donorQueriesService.findAllByStatus(status);
     return {
       status: HttpStatus.OK,
       data: queries,
     };
   }
 
-  @Public()
   @Get('user')
-  async getTicketsForUser(@Query('donorId') donorId: string) {
-    return this.donorQueriesService.findByDonorId(donorId);
+  @Public()
+  async findByDonorIdQuery(@Query('donorId') donorId: string) {
+    if (!donorId) {
+      throw new HttpException(
+        {
+          status: HttpStatus.BAD_REQUEST,
+          message: 'donorId query parameter is required',
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    const queries = await this.donorQueriesService.findByDonorId(donorId);
+    return queries;
   }
 
-  @Get('in-progress')
-  @UseGuards(RolesGuard)
+  @Get('user/:email')
   @Roles('SUPER_ADMIN', 'ADMIN')
-  async findInProgress(@Query() filterDto: FilterDonorQueriesDto) {
-    const queries = await this.donorQueriesService.findAllByStatusWithFilters(
-      QueryStatus.IN_PROGRESS, 
-      filterDto
-    );
+  async findByUserEmail(@Param('email') email: string) {
+    const queries = await this.donorQueriesService.findByUserEmail(email);
     return {
       status: HttpStatus.OK,
       data: queries,
     };
   }
 
-  @Get('pending-reply')
-  @UseGuards(RolesGuard)
+  @Get('donor/:donorId')
+  @Public()
   @Roles('SUPER_ADMIN', 'ADMIN')
-  async findPendingReply(@Query() filterDto: FilterDonorQueriesDto) {
-    const queries = await this.donorQueriesService.findAllByStatusWithFilters(
-      QueryStatus.PENDING_REPLY, 
-      filterDto
-    );
+  async findByDonorId(@Param('donorId') donorId: string) {
+    const queries = await this.donorQueriesService.findByDonorId(donorId);
     return {
       status: HttpStatus.OK,
       data: queries,
     };
   }
 
-  @Get('resolved')
-  @UseGuards(RolesGuard)
-  @Roles('SUPER_ADMIN', 'ADMIN')
-  async findResolved(@Query() filterDto: FilterDonorQueriesDto) {
-    const queries = await this.donorQueriesService.findAllByStatusWithFilters(
-      QueryStatus.RESOLVED, 
-      filterDto
-    );
-    return {
-      status: HttpStatus.OK,
-      data: queries,
-    };
-  }
-
-  @Get('transferred')
-  @UseGuards(RolesGuard)
-  @Roles('SUPER_ADMIN', 'ADMIN')
-  async findTransferred(@Query() filterDto: FilterDonorQueriesDto) {
-    const queries = await this.donorQueriesService.findAllByStatusWithFilters(
-      QueryStatus.TRANSFERRED, 
-      filterDto
-    );
-    return {
-      status: HttpStatus.OK,
-      data: queries,
-    };
-  }
-
-  @Get('admin/:id')
-  @UseGuards(RolesGuard)
+  @Get(':id')
   @Roles('SUPER_ADMIN', 'ADMIN')
   async findOne(@Param('id', ParseIntPipe) id: number) {
     const query = await this.donorQueriesService.findOne(id);
@@ -121,57 +94,85 @@ export class DonorQueriesController {
     };
   }
 
-  @Public()
-  @Get(':id')
-  async getQuery(@Param('id', ParseIntPipe) id: number) {
-    return this.donorQueriesService.findOne(id);
-  }
-
   @Patch(':id')
-  @UseGuards(RolesGuard)
   @Roles('SUPER_ADMIN', 'ADMIN')
-  async update(@Param('id') id: string, @Body() updateDonorQueryDto: UpdateDonorQueryDto) {
-    const query = await this.donorQueriesService.update(+id, updateDonorQueryDto);
+  async update(@Param('id', ParseIntPipe) id: number, @Body() updateDonorQueryDto: UpdateDonorQueryDto) {
+    const query = await this.donorQueriesService.update(id, updateDonorQueryDto);
     return {
       status: HttpStatus.OK,
       data: query,
     };
   }
 
-  @Patch(':id/resolve')
-  @UseGuards(RolesGuard)
-  @Roles('SUPER_ADMIN', 'ADMIN')
-  async resolve(@Param('id') id: string, @Body('resolvedById') resolvedById: number) {
-    const query = await this.donorQueriesService.resolveQuery(+id, resolvedById);
+  @Delete(':id')
+  @Roles('SUPER_ADMIN')
+  async remove(@Param('id', ParseIntPipe) id: number) {
+    const result = await this.donorQueriesService.remove(id);
     return {
       status: HttpStatus.OK,
-      data: query,
+      data: result,
     };
   }
 
-  @Patch(':id/transfer')
-  @UseGuards(RolesGuard)
+  @Post(':id/resolve')
   @Roles('SUPER_ADMIN', 'ADMIN')
-  async transfer(
-    @Param('id') id: string, 
-    @Body('transferredToUserId') transferredToUserId: number,
-    @Body('transferNote') transferNote?: string
+  async resolveQuery(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: User,
   ) {
-    const query = await this.donorQueriesService.transferQuery(+id, transferredToUserId, transferNote);
+    const query = await this.donorQueriesService.resolveQuery(id, user.id);
     return {
       status: HttpStatus.OK,
       data: query,
     };
+  }
+
+  @Post(':id/transfer')
+  @Roles('SUPER_ADMIN', 'ADMIN')
+  async transferQuery(
+    @Param('id', ParseIntPipe) id: number,
+    @Body('transferredToUserId') transferredToUserId: number,
+    @Body('transferredTo') transferredTo: string,
+    @Body('transferNote') transferNote?: string,
+  ) {
+    const query = await this.donorQueriesService.transferQuery(id, transferredToUserId, transferredTo, transferNote);
+    return {
+      status: HttpStatus.OK,
+      data: query,
+    };
+  }
+
+  @Post(':id/accept')
+  @Roles('SUPER_ADMIN', 'ADMIN')
+  async acceptQuery(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: User,
+  ) {
+    try {
+      const result = await this.donorQueriesService.acceptQuery(id, user.id);
+      return {
+        status: HttpStatus.OK,
+        data: result,
+        message: 'Query accepted successfully',
+      };
+    } catch (error) {
+      throw new HttpException(
+        {
+          status: HttpStatus.BAD_REQUEST,
+          message: error.message || 'Failed to accept query',
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
   }
 
   @Post(':id/send-reminder')
-  @UseGuards(RolesGuard)
   @Roles('SUPER_ADMIN', 'ADMIN')
   async sendReminder(
-    @Param('id') id: string,
-    @Body('message') message?: string
+    @Param('id', ParseIntPipe) id: number,
+    @Body('message') message?: string,
   ) {
-    const query = await this.donorQueriesService.sendReminder(+id, message);
+    const query = await this.donorQueriesService.sendReminder(id, message);
     return {
       status: HttpStatus.OK,
       data: query,
@@ -179,40 +180,16 @@ export class DonorQueriesController {
     };
   }
 
-  @Delete(':id')
-  @UseGuards(RolesGuard)
-  @Roles('SUPER_ADMIN')
-  async remove(@Param('id') id: string) {
-    const result = await this.donorQueriesService.remove(+id);
+  @Get('filtered/statuses')
+  @Roles('SUPER_ADMIN', 'ADMIN')
+  async findManyByStatuses(
+    @Query('statuses') statuses: QueryStatus[],
+    @Query() filterDto: FilterDonorQueriesDto,
+  ) {
+    const queries = await this.donorQueriesService.findManyByStatusesWithFilters(statuses, filterDto);
     return {
       status: HttpStatus.OK,
-      data: result,
-      message: `Query with ID ${id} has been removed`,
+      data: queries,
     };
-  }
-
-  @Patch(':id/accept')
-  @UseGuards(JwtAuthGuard)
-  async acceptQuery(
-    @Param('id', ParseIntPipe) id: number,
-    @Request() req: any,
-  ) {
-    try {
-      const userId = req.user.userId;
-      const result = await this.donorQueriesService.acceptQuery(id, userId);
-      return {
-        success: true,
-        message: 'Query accepted successfully',
-        data: result,
-      };
-    } catch (error) {
-      throw new HttpException(
-        {
-          success: false,
-          message: error.message || 'Failed to accept query',
-        },
-        HttpStatus.BAD_REQUEST,
-      );
-    }
   }
 }

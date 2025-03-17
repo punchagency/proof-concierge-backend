@@ -1,11 +1,7 @@
 import { IsEnum, IsNotEmpty, IsOptional, IsString } from 'class-validator';
-import { QueryMode, QueryStatus } from '@prisma/client';
+import { QueryMode } from '@prisma/client';
 
 export class CreateDonorQueryDto {
-  @IsString()
-  @IsNotEmpty()
-  sid: string;
-
   @IsString()
   @IsNotEmpty()
   donor: string;
@@ -20,20 +16,15 @@ export class CreateDonorQueryDto {
 
   @IsString()
   @IsNotEmpty()
-  stage: string;
-
-  @IsEnum(['TEXT', 'HUDDLE', 'VIDEO_CALL'], {
-    message: 'queryMode must be one of the following values: TEXT, HUDDLE, VIDEO_CALL'
-  })
-  queryMode: QueryMode;
+  stage: string
 
   @IsString()
   @IsNotEmpty()
   device: string;
 
-  @IsEnum(QueryStatus)
+  @IsString()
   @IsOptional()
-  status?: QueryStatus;
+  content?: string;
 
   @IsOptional()
   resolvedById?: number;
