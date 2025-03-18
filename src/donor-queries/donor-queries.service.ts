@@ -404,6 +404,7 @@ export class DonorQueriesService {
           messageType: MessageType.SYSTEM,
           content: `Query #${query.id} has been accepted by ${user.name}`,
           senderId: userId,
+          isFromAdmin: true,
         },
       });
 

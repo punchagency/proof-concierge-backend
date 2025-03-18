@@ -15,6 +15,7 @@ export interface CreateMessageDto {
   fcmToken?: string;
   isFromAdmin?: boolean;
   userToken?: string;
+  adminToken?: string;
   callRequestId?: number;
 }
 
@@ -56,6 +57,7 @@ export class MessagesService {
           fcmToken: data.fcmToken,
           isFromAdmin: data.isFromAdmin ?? false,
           userToken: data.userToken,
+          adminToken: data.adminToken,
           callRequestId: data.callRequestId,
         },
         include: {
@@ -296,7 +298,13 @@ export class MessagesService {
   async findQueryMessages(queryId: number) {
     return this.findMessages({ 
       queryId, 
-      messageType: MessageType.QUERY,
+      messageType: [
+        MessageType.QUERY,
+        MessageType.CHAT,
+        MessageType.SYSTEM,
+        MessageType.CALL_STARTED,
+        MessageType.CALL_ENDED
+      ],
     });
   }
 

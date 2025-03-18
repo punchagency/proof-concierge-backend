@@ -753,7 +753,7 @@ curl --location --request GET 'http://localhost:3000/messages/between/456/789'
 - **Body:**
 ```json
 {
-    "mode": "VIDEO" // or "AUDIO" or "SCREEN"
+    "mode": "VIDEO" // or "AUDIO"
 }
 ```
 

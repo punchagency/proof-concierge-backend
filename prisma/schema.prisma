@@ -67,6 +67,7 @@ model Message {
   roomName      String?
   messageType   MessageType  @default(QUERY)
   userToken     String?
+  adminToken    String?
   callRequestId Int?
   callSession   CallSession? @relation(fields: [callSessionId], references: [id])
   query         DonorQuery?  @relation(fields: [queryId], references: [id])

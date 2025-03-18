@@ -558,6 +558,7 @@ export class CallsService implements OnModuleInit {
             roomName: result.room.name,
             callSessionId: result.callSession.id,
             userToken: result.tokens.user,
+            adminToken: result.tokens.admin,
             updatedAt: new Date(),
           },
         });
@@ -573,6 +574,7 @@ export class CallsService implements OnModuleInit {
           callSessionId: result.callSession.id,
           callRequestId: callRequest.id,
           userToken: result.tokens.user,
+          adminToken: result.tokens.admin,
         });
       }
 
@@ -599,6 +601,7 @@ export class CallsService implements OnModuleInit {
       roomName: callSession.roomName,
       callSessionId: callSession.id,
       userToken: callSession.userToken || undefined,  // Handle null case
+      adminToken: callSession.adminToken || undefined,  // Handle null case
       isFromAdmin: true  // Set this to true for call-started messages
     });
   }

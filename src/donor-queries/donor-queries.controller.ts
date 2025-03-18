@@ -37,6 +37,29 @@ export class DonorQueriesController {
     };
   }
 
+  @Get('general')
+  @Public()
+  async findGeneral(@Query() filterDto: FilterDonorQueriesDto) {
+    try {
+      // Add default status filter for IN_PROGRESS queries
+      filterDto.status = QueryStatus.IN_PROGRESS;
+      
+      const queries = await this.donorQueriesService.findWithFilters(filterDto);
+      return {
+        status: HttpStatus.OK,
+        data: queries,
+      };
+    } catch (error) {
+      throw new HttpException(
+        {
+          status: HttpStatus.BAD_REQUEST,
+          message: error.message || 'Failed to fetch general queries',
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
   @Get('status/:status')
   @Roles('SUPER_ADMIN', 'ADMIN')
   async findAllByStatus(@Param('status') status: QueryStatus) {
@@ -142,7 +165,7 @@ export class DonorQueriesController {
     };
   }
 
-  @Post(':id/accept')
+  @Patch(':id/accept')
   @Roles('SUPER_ADMIN', 'ADMIN')
   async acceptQuery(
     @Param('id', ParseIntPipe) id: number,
