@@ -23,6 +23,7 @@ import { MessagesService } from '../services/messages.service';
 import { PrismaService } from '../../database/prisma.service';
 import { StartCallDto } from '../dto/start-call.dto';
 import { Public } from 'src/auth/public.decorator';
+import { CreateCallRequestDto } from '../dto/create-call-request.dto';
 
 @Controller({
   path: 'communication/call',
@@ -194,7 +195,7 @@ export class CallsController {
   @Public()
   async requestCall(
     @Param('queryId') queryId: string,
-    @Body() body: { mode?: CallMode },
+    @Body() body: CreateCallRequestDto,
   ) {
     try {
       // Ensure we're passing a valid CallMode enum value
@@ -215,6 +216,103 @@ export class CallsController {
       throw new HttpException(
         error.message || 'Failed to request call',
         HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  @Get(':queryId/requests')
+  async getPendingCallRequests(
+    @Param('queryId') queryId: string,
+    @Request() req: any,
+  ) {
+    try {
+      const adminId = req.user?.id || req.user?.userId || req.userId;
+      
+      if (!adminId) {
+        this.logger.error('Admin ID not found in request. Request structure:', req.user);
+        throw new HttpException(
+          'Admin ID is required',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+      
+      // Check if the admin is assigned to this query
+      const query = await this.callsService.validateAdminAccess(+queryId, adminId);
+      if (!query) {
+        throw new HttpException(
+          'You are not authorized to view call requests for this query',
+          HttpStatus.FORBIDDEN,
+        );
+      }
+      
+      const callRequests = await this.callsService.getCallRequests(+queryId);
+      
+      return {
+        success: true,
+        message: 'Call requests retrieved successfully',
+        data: callRequests,
+      };
+    } catch (error) {
+      this.logger.error('Error getting call requests:', error);
+      throw new HttpException(
+        error.message || 'Failed to get call requests',
+        error.status || HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  @Post(':queryId/accept-request/:requestId')
+  async acceptSpecificCallRequest(
+    @Param('queryId') queryId: string,
+    @Param('requestId') requestId: string,
+    @Request() req: any,
+  ) {
+    try {
+      const adminId = req.user?.id || req.user?.userId || req.userId;
+      
+      if (!adminId) {
+        throw new HttpException(
+          'Admin ID is required',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+      
+      // Check if admin is assigned to this query
+      const query = await this.callsService.validateAdminAccess(+queryId, adminId);
+      if (!query) {
+        throw new HttpException(
+          'You are not authorized to accept this call request',
+          HttpStatus.FORBIDDEN,
+        );
+      }
+
+      const result = await this.callsService.acceptCallRequest(
+        +queryId,
+        adminId,
+        +requestId,
+      );
+
+      // Log the room URL
+      const roomUrl = result.room.url || `https://${this.callsService.getDomain()}/${result.room.name}`;
+      this.logger.log(`Call room created: ${roomUrl}`);
+
+      return {
+        success: true,
+        message: `Call request accepted and call initiated`,
+        data: {
+          ...result,
+          roomUrl: roomUrl,
+        },
+      };
+    } catch (error) {
+      this.logger.error('Error accepting specific call request:', error);
+      throw new HttpException(
+        error.message || 'Failed to accept call request',
+        error.status || HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
   }
@@ -277,6 +375,52 @@ export class CallsController {
       this.logger.error('Error accepting call request:', error);
       throw new HttpException(
         error.message || 'Failed to accept call request',
+        error.status || HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  @Post(':queryId/reject-request/:requestId')
+  async rejectCallRequest(
+    @Param('queryId') queryId: string,
+    @Param('requestId') requestId: string,
+    @Request() req: any,
+  ) {
+    try {
+      const adminId = req.user?.id || req.user?.userId || req.userId;
+      
+      if (!adminId) {
+        throw new HttpException(
+          'Admin ID is required',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+      
+      // Check if admin is assigned to this query
+      const query = await this.callsService.validateAdminAccess(+queryId, adminId);
+      if (!query) {
+        throw new HttpException(
+          'You are not authorized to reject this call request',
+          HttpStatus.FORBIDDEN,
+        );
+      }
+
+      const result = await this.callsService.rejectCallRequest(
+        +requestId,
+        adminId,
+      );
+
+      return {
+        success: true,
+        message: `Call request rejected`,
+        data: result,
+      };
+    } catch (error) {
+      this.logger.error('Error rejecting call request:', error);
+      throw new HttpException(
+        error.message || 'Failed to reject call request',
         error.status || HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }

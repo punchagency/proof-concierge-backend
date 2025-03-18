@@ -25,6 +25,7 @@ model User {
   transferredQueries DonorQuery[]  @relation("TransferredToUser")
   receivedMessages   Message[]     @relation("ReceivedMessages")
   sentMessages       Message[]     @relation("SentMessages")
+  callRequests       CallRequest[] @relation("AdminCallRequests")
 }
 
 model DonorQuery {
@@ -48,6 +49,7 @@ model DonorQuery {
   resolvedByUser      User?         @relation("ResolvedByUser", fields: [resolvedById], references: [id])
   transferredToUser   User?         @relation("TransferredToUser", fields: [transferredToUserId], references: [id])
   messages            Message[]
+  callRequests        CallRequest[] @relation("QueryCallRequests")
 }
 
 model Message {
@@ -65,15 +67,18 @@ model Message {
   roomName      String?
   messageType   MessageType  @default(QUERY)
   userToken     String?
+  callRequestId Int?
   callSession   CallSession? @relation(fields: [callSessionId], references: [id])
   query         DonorQuery?  @relation(fields: [queryId], references: [id])
   recipient     User?        @relation("ReceivedMessages", fields: [recipientId], references: [id])
   sender        User?        @relation("SentMessages", fields: [senderId], references: [id])
+  callRequest   CallRequest? @relation(fields: [callRequestId], references: [id])
 
   @@index([queryId])
   @@index([senderId])
   @@index([recipientId])
   @@index([callSessionId])
+  @@index([callRequestId])
 }
 
 model CallSession {
@@ -92,6 +97,23 @@ model CallSession {
   admin      User       @relation(fields: [adminId], references: [id])
   query      DonorQuery @relation(fields: [queryId], references: [id])
   messages   Message[]
+
+  @@index([queryId])
+  @@index([adminId])
+}
+
+model CallRequest {
+  id        Int           @id @default(autoincrement())
+  queryId   Int
+  adminId   Int?
+  mode      CallMode
+  message   String?
+  status    CallRequestStatus @default(PENDING)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  query     DonorQuery    @relation("QueryCallRequests", fields: [queryId], references: [id], onDelete: Cascade)
+  admin     User?         @relation("AdminCallRequests", fields: [adminId], references: [id])
+  messages  Message[]
 
   @@index([queryId])
   @@index([adminId])
@@ -132,4 +154,11 @@ enum CallStatus {
   CREATED
   STARTED
   ENDED
+}
+
+enum CallRequestStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  CANCELLED
 }

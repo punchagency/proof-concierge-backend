@@ -15,6 +15,7 @@ export interface CreateMessageDto {
   fcmToken?: string;
   isFromAdmin?: boolean;
   userToken?: string;
+  callRequestId?: number;
 }
 
 export interface GetMessagesDto {
@@ -55,12 +56,14 @@ export class MessagesService {
           fcmToken: data.fcmToken,
           isFromAdmin: data.isFromAdmin ?? false,
           userToken: data.userToken,
+          callRequestId: data.callRequestId,
         },
         include: {
           sender: true,
           recipient: true,
           query: true,
           callSession: true,
+          callRequest: data.callRequestId ? true : undefined,
         },
       });
 

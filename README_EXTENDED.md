@@ -32,7 +32,10 @@ This document provides a detailed guide to all the API endpoints in the Proof Co
     - [PUT /communication/call/:roomName/status](#put-communicationcallroomnamestatus)
     - [GET /communication/calls/:queryId](#get-communicationcallsqueryid)
     - [POST /communication/call/:queryId/request](#post-communicationcallqueryidrequest)
+    - [GET /communication/call/:queryId/requests](#get-communicationcallqueryidrequests)
+    - [POST /communication/call/:queryId/accept-request/:requestId](#post-communicationcallqueryidaccept-requestrequestid)
     - [POST /communication/call/:queryId/accept-request](#post-communicationcallqueryidaccept-request)
+    - [POST /communication/call/:queryId/reject-request/:requestId](#post-communicationcallqueryidreject-requestrequestid)
 - [Protected Endpoints (Admin/Support Staff)](#protected-endpoints-adminsupport-staff)
   - [User Management](#user-management)
     - [PUT /users/me/fcm-token](#put-usersmefcm-token)
@@ -943,7 +946,7 @@ curl --location --request GET 'http://localhost:3000/messages/between/456/789'
 
 #### POST /communication/call/:queryId/request
 
-**Purpose:** Request a call session for a specific donor query. This creates a system message and notifies the assigned admin.
+**Purpose:** Request a call session for a specific donor query. This creates a call request record and notifies the assigned admin.
 
 **Request:**
 - **Method:** POST
@@ -951,7 +954,8 @@ curl --location --request GET 'http://localhost:3000/messages/between/456/789'
 - **Body:**
 ```json
 {
-    "mode": "VIDEO" // or "AUDIO", optional, defaults to "VIDEO"
+    "mode": "VIDEO", // or "AUDIO" or "SCREEN", optional, defaults to "VIDEO"
+    "message": "Optional message about the call request"
 }
 ```
 
@@ -961,12 +965,22 @@ curl --location --request GET 'http://localhost:3000/messages/between/456/789'
     "success": true,
     "message": "Call request sent successfully",
     "data": {
+        "callRequest": {
+            "id": 5,
+            "queryId": 123,
+            "mode": "VIDEO",
+            "message": "Donor requested a VIDEO call",
+            "status": "PENDING",
+            "createdAt": "2024-03-20T12:00:00.000Z",
+            "updatedAt": "2024-03-20T12:00:00.000Z"
+        },
         "message": {
             "id": 1,
             "content": "Donor requested a VIDEO call",
             "queryId": 123,
             "messageType": "SYSTEM",
             "callMode": "VIDEO",
+            "callRequestId": 5,
             "createdAt": "2024-03-20T12:00:00.000Z"
         },
         "query": {
@@ -976,9 +990,114 @@ curl --location --request GET 'http://localhost:3000/messages/between/456/789'
 }
 ```
 
+#### GET /communication/call/:queryId/requests
+
+**Purpose:** List all pending call requests for a specific query. This endpoint is restricted to the admin who is assigned to that query.
+
+**Request:**
+- **Method:** GET
+- **URL:** `/communication/call/{queryId}/requests`
+- **Headers:** 
+  - Requires JWT Authentication
+  - Requires ADMIN or SUPER_ADMIN role
+  - The authenticated admin must be the one assigned to the query
+- **Authorization:** Only the admin assigned to the query can view the call requests
+
+**cURL Example:**
+```bash
+curl --location --request GET 'http://localhost:3000/communication/call/123/requests' \
+--header 'Authorization: Bearer YOUR_TOKEN'
+```
+
+**Response:**
+```json
+{
+    "success": true,
+    "message": "Call requests retrieved successfully",
+    "data": [
+        {
+            "id": 5,
+            "queryId": 123,
+            "mode": "VIDEO",
+            "message": "Donor requested a VIDEO call",
+            "status": "PENDING",
+            "createdAt": "2024-03-20T12:00:00.000Z",
+            "updatedAt": "2024-03-20T12:00:00.000Z",
+            "admin": null
+        },
+        {
+            "id": 4,
+            "queryId": 123,
+            "mode": "AUDIO",
+            "message": "Donor requested an AUDIO call",
+            "status": "PENDING",
+            "createdAt": "2024-03-19T10:30:00.000Z",
+            "updatedAt": "2024-03-19T10:30:00.000Z",
+            "admin": null
+        }
+    ]
+}
+```
+
+#### POST /communication/call/:queryId/accept-request/:requestId
+
+**Purpose:** Accept a specific call request by ID and start the call session. This endpoint is restricted to the admin who is assigned to the query.
+
+**Request:**
+- **Method:** POST
+- **URL:** `/communication/call/{queryId}/accept-request/{requestId}`
+- **Headers:** 
+  - Requires JWT Authentication
+  - Requires ADMIN or SUPER_ADMIN role
+  - The authenticated admin must be the one assigned to the query
+- **Authorization:** Only the admin assigned to the query can accept the call request
+
+**cURL Example:**
+```bash
+curl --location --request POST 'http://localhost:3000/communication/call/123/accept-request/5' \
+--header 'Authorization: Bearer YOUR_TOKEN'
+```
+
+**Response:**
+```json
+{
+    "success": true,
+    "message": "Call request accepted and call initiated",
+    "data": {
+        "callSession": {
+            "id": 1,
+            "queryId": 123,
+            "adminId": 456,
+            "roomName": "room_xyz",
+            "mode": "VIDEO",
+            "status": "CREATED",
+            "createdAt": "2024-03-20T12:00:00.000Z"
+        },
+        "room": {
+            "name": "room_xyz",
+            "url": "https://your-domain.daily.co/room_xyz"
+        },
+        "tokens": {
+            "admin": "admin_token_here",
+            "user": "user_token_here"
+        },
+        "callRequest": {
+            "id": 5,
+            "queryId": 123,
+            "adminId": 456,
+            "mode": "VIDEO",
+            "status": "ACCEPTED",
+            "createdAt": "2024-03-20T12:00:00.000Z",
+            "updatedAt": "2024-03-20T12:10:00.000Z"
+        },
+        "roomUrl": "https://your-domain.daily.co/room_xyz"
+    }
+}
+```
+
 #### POST /communication/call/:queryId/accept-request
 
-**Purpose:** Accept a call request and start the call session. This endpoint is restricted to the admin who is assigned to the specific query.
+**Purpose:** Accept the most recent pending call request for a query. This endpoint is restricted to the admin who is assigned to the query.
 
 **Request:**
 - **Method:** POST
@@ -1018,7 +1137,55 @@ curl --location --request POST 'http://localhost:3000/communication/call/123/acc
             "admin": "admin_token_here",
             "user": "user_token_here"
         },
+        "callRequest": {
+            "id": 5,
+            "queryId": 123,
+            "adminId": 456,
+            "mode": "VIDEO",
+            "status": "ACCEPTED",
+            "createdAt": "2024-03-20T12:00:00.000Z",
+            "updatedAt": "2024-03-20T12:10:00.000Z"
+        },
         "roomUrl": "https://your-domain.daily.co/room_xyz"
+    }
+}
+```
+
+#### POST /communication/call/:queryId/reject-request/:requestId
+
+**Purpose:** Reject a specific call request by ID. This endpoint is restricted to the admin who is assigned to the query.
+
+**Request:**
+- **Method:** POST
+- **URL:** `/communication/call/{queryId}/reject-request/{requestId}`
+- **Headers:** 
+  - Requires JWT Authentication
+  - Requires ADMIN or SUPER_ADMIN role
+  - The authenticated admin must be the one assigned to the query
+- **Authorization:** Only the admin assigned to the query can reject the call request
+
+**cURL Example:**
+```bash
+curl --location --request POST 'http://localhost:3000/communication/call/123/reject-request/5' \
+--header 'Authorization: Bearer YOUR_TOKEN'
+```
+
+**Response:**
+```json
+{
+    "success": true,
+    "message": "Call request rejected",
+    "data": {
+        "id": 5,
+        "queryId": 123,
+        "adminId": 456,
+        "mode": "VIDEO",
+        "status": "REJECTED",
+        "createdAt": "2024-03-20T12:00:00.000Z",
+        "updatedAt": "2024-03-20T12:15:00.000Z",
+        "query": {
+            // Query details
+        }
     }
 }
 ```
@@ -1027,7 +1194,7 @@ curl --location --request POST 'http://localhost:3000/communication/call/123/acc
 ```json
 {
     "statusCode": 403,
-    "message": "You are not authorized to accept this call request"
+    "message": "You are not authorized to reject this call request"
 }
 ```
 
@@ -1933,6 +2100,12 @@ If you need these functionalities, please check the latest API documentation or 
 - `STARTED`: Call is in progress
 - `ENDED`: Call has ended
 
+#### CallRequestStatus
+- `PENDING`: Call request is pending acceptance
+- `ACCEPTED`: Call request has been accepted
+- `REJECTED`: Call request has been rejected
+- `CANCELLED`: Call request has been cancelled
+
 ### Models
 
 #### User
@@ -1981,20 +2154,31 @@ If you need these functionalities, please check the latest API documentation or 
 - `messageType`: Message type (QUERY, CHAT, SYSTEM, CALL_STARTED, CALL_ENDED)
 - `callMode`: Call mode (VIDEO, AUDIO, SCREEN) (optional)
 - `roomName`: Room name for calls (optional)
-- `userToken`: User token for calls (optional)
+- `callRequestId`: ID of the associated call request (optional)
 
 #### CallSession
 - `id`: Unique identifier (auto-incremented)
 - `queryId`: ID of the associated donor query
 - `adminId`: ID of the admin who initiated the call
-- `roomName`: Unique room name
+- `roomName`: Daily.co room name (unique)
 - `mode`: Call mode (VIDEO, AUDIO, SCREEN)
 - `status`: Call status (CREATED, STARTED, ENDED)
 - `startedAt`: When the call started (optional)
 - `endedAt`: When the call ended (optional)
 - `createdAt`: Creation timestamp
 - `updatedAt`: Last update timestamp
-- `userToken`: User token for authentication (optional)
+- `adminToken`: Admin token for the call (optional)
+- `userToken`: User token for the call (optional)
+
+#### CallRequest
+- `id`: Unique identifier (auto-incremented)
+- `queryId`: ID of the associated donor query
+- `adminId`: ID of the admin who accepted/rejected the request (optional)
+- `mode`: Call mode (VIDEO, AUDIO, SCREEN)
+- `message`: Optional message about the call request
+- `status`: Request status (PENDING, ACCEPTED, REJECTED, CANCELLED)
+- `createdAt`: Creation timestamp
+- `updatedAt`: Last update timestamp
 
 ## Database Migration
 

@@ -362,12 +362,27 @@ export class CallsService implements OnModuleInit {
         throw new Error('Query not found');
       }
 
-      // Create a message for the call request
+      // Create a call request in the database
+      const callRequest = await this.prisma.callRequest.create({
+        data: {
+          mode: callMode,
+          query: {
+            connect: { id: queryId }
+          },
+          message: `Donor requested a ${callMode} call`,
+        },
+        include: {
+          query: true,
+        },
+      });
+
+      // Create a message linked to the call request
       const message = await this.messagesService.create({
         content: `Donor requested a ${callMode} call`,
         queryId,
         messageType: MessageType.SYSTEM,
         callMode: callMode,
+        callRequestId: callRequest.id,
       });
 
       // If there's an assigned admin, send them a notification
@@ -382,6 +397,7 @@ export class CallsService implements OnModuleInit {
             data: {
               type: 'call_request',
               queryId: queryId.toString(),
+              callRequestId: callRequest.id.toString(),
               mode: callMode,
               timestamp: new Date().toISOString(),
             },
@@ -397,6 +413,7 @@ export class CallsService implements OnModuleInit {
       }
 
       return {
+        callRequest,
         message,
         query,
       };
@@ -439,7 +456,7 @@ export class CallsService implements OnModuleInit {
     }
   }
 
-  async acceptCallRequest(queryId: number, adminId: number) {
+  async acceptCallRequest(queryId: number, adminId: number, callRequestId?: number) {
     try {
       // Validate adminId
       if (adminId === undefined || adminId === null) {
@@ -455,32 +472,56 @@ export class CallsService implements OnModuleInit {
         throw new Error(`Admin with ID ${adminId} not found`);
       }
       
-      // Get the query and its latest call request message
-      const query = await this.prisma.donorQuery.findUnique({
-        where: { id: queryId },
-        include: {
-          messages: {
-            where: {
-              messageType: MessageType.SYSTEM,
-              callMode: { not: null },
-            },
-            orderBy: { createdAt: 'desc' },
-            take: 1,
+      // Find the call request to accept
+      let callRequest;
+      
+      if (callRequestId) {
+        // If a specific call request ID is provided, use that
+        callRequest = await this.prisma.callRequest.findUnique({
+          where: { 
+            id: callRequestId,
+            queryId: queryId // Ensure it belongs to the specified query
           },
-        },
-      });
-
-      if (!query) {
-        throw new Error('Query not found');
+          include: {
+            query: true,
+          },
+        });
+        
+        if (!callRequest) {
+          throw new Error(`Call request with ID ${callRequestId} not found for query ${queryId}`);
+        }
+      } else {
+        // Otherwise, get the latest pending call request for the query
+        callRequest = await this.prisma.callRequest.findFirst({
+          where: {
+            queryId: queryId,
+            status: 'PENDING',
+          },
+          orderBy: {
+            createdAt: 'desc',
+          },
+          include: {
+            query: true,
+          },
+        });
       }
 
-      const latestCallRequest = query.messages[0];
-      if (!latestCallRequest || !latestCallRequest.callMode) {
+      if (!callRequest) {
         throw new Error('No pending call request found for this query');
       }
 
+      // Update the call request status to ACCEPTED
+      await this.prisma.callRequest.update({
+        where: { id: callRequest.id },
+        data: {
+          status: 'ACCEPTED',
+          adminId: adminId, // Assign the admin who accepted it
+          updatedAt: new Date(),
+        },
+      });
+
       // Start the call using the requested mode
-      const result = await this.startCall(queryId, adminId, latestCallRequest.callMode);
+      const result = await this.startCall(queryId, adminId, callRequest.mode);
 
       // Create a message indicating the call request was accepted
       await this.messagesService.create({
@@ -488,12 +529,16 @@ export class CallsService implements OnModuleInit {
         queryId,
         senderId: adminId,
         messageType: MessageType.SYSTEM,
-        callMode: latestCallRequest.callMode,
+        callMode: callRequest.mode,
         roomName: result.room.name,
         callSessionId: result.callSession.id,
+        callRequestId: callRequest.id,
       });
 
-      return result;
+      return {
+        ...result,
+        callRequest,
+      };
     } catch (error) {
       this.logger.error('Error accepting call request:', error);
       throw error;
@@ -515,5 +560,74 @@ export class CallsService implements OnModuleInit {
       userToken: callSession.userToken || undefined,  // Handle null case
       isFromAdmin: true  // Set this to true for call-started messages
     });
+  }
+
+  async getCallRequests(queryId: number) {
+    try {
+      return await this.prisma.callRequest.findMany({
+        where: {
+          queryId: queryId,
+          status: 'PENDING',
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+        include: {
+          admin: {
+            select: {
+              id: true,
+              name: true,
+              username: true,
+              avatar: true,
+            },
+          },
+        },
+      });
+    } catch (error) {
+      this.logger.error('Error getting call requests:', error);
+      throw error;
+    }
+  }
+
+  async rejectCallRequest(callRequestId: number, adminId: number) {
+    try {
+      const callRequest = await this.prisma.callRequest.findUnique({
+        where: { id: callRequestId },
+        include: {
+          query: true,
+        },
+      });
+
+      if (!callRequest) {
+        throw new Error(`Call request with ID ${callRequestId} not found`);
+      }
+
+      // Update the call request status to REJECTED
+      const updatedCallRequest = await this.prisma.callRequest.update({
+        where: { id: callRequestId },
+        data: {
+          status: 'REJECTED',
+          adminId: adminId, // Record which admin rejected it
+          updatedAt: new Date(),
+        },
+        include: {
+          query: true,
+        },
+      });
+
+      // Create a message indicating the call request was rejected
+      await this.messagesService.create({
+        content: `Call request rejected by admin`,
+        queryId: callRequest.queryId,
+        senderId: adminId,
+        messageType: MessageType.SYSTEM,
+        callRequestId: callRequest.id,
+      });
+
+      return updatedCallRequest;
+    } catch (error) {
+      this.logger.error('Error rejecting call request:', error);
+      throw error;
+    }
   }
 }
