@@ -21,6 +21,7 @@
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "test:daily": "ts-node src/communication/test-daily-api.ts",
     "seed": "ts-node src/database/seed.ts",
+    "seed:admins": "ts-node scripts/seed-admins.ts",
     "postinstall": "npx prisma generate",
     "update-call-messages": "ts-node src/scripts/update-call-messages.ts",
     "db:clear": "ts-node scripts/clear-data.ts",

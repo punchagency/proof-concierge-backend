@@ -122,8 +122,22 @@ export class CallsService implements OnModuleInit {
         },
       });
 
-      // Create message for call initiation
-      await this.createCallStartedMessage(queryId, adminId, callSession, callMode);
+      // Check if this call is from accepting a call request
+      const isFromCallRequest = await this.prisma.callRequest.findFirst({
+        where: {
+          queryId: queryId,
+          status: 'ACCEPTED',
+          adminId: adminId,
+        },
+        orderBy: {
+          updatedAt: 'desc',
+        },
+      });
+
+      // Only create a call started message if it's not from accepting a call request
+      if (!isFromCallRequest) {
+        await this.createCallStartedMessage(queryId, adminId, callSession, callMode);
+      }
 
       return {
         callSession,
@@ -520,20 +534,47 @@ export class CallsService implements OnModuleInit {
         },
       });
 
-      // Start the call using the requested mode
+      // Start the call using the requested mode, but don't create an additional call started message
       const result = await this.startCall(queryId, adminId, callRequest.mode);
 
-      // Create a message indicating the call request was accepted
-      await this.messagesService.create({
-        content: `Call request accepted by admin`,
-        queryId,
-        senderId: adminId,
-        messageType: MessageType.SYSTEM,
-        callMode: callRequest.mode,
-        roomName: result.room.name,
-        callSessionId: result.callSession.id,
-        callRequestId: callRequest.id,
+      // Find the original call request message to update it
+      const originalMessage = await this.prisma.message.findFirst({
+        where: {
+          callRequestId: callRequest.id,
+          messageType: MessageType.SYSTEM,
+        },
       });
+
+      if (originalMessage) {
+        // Update the existing message with call details
+        const roomUrl = `https://${this.getDomain()}/${result.room.name}`;
+        const updatedContent = `${originalMessage.content}\n\n**✅ ACCEPTED by ${admin.name}**\n\n**Join the call:** [Click here to join the ${callRequest.mode} call](${roomUrl})`;
+        
+        await this.prisma.message.update({
+          where: { id: originalMessage.id },
+          data: {
+            content: updatedContent,
+            callMode: callRequest.mode,
+            roomName: result.room.name,
+            callSessionId: result.callSession.id,
+            userToken: result.tokens.user,
+            updatedAt: new Date(),
+          },
+        });
+      } else {
+        // If for some reason the original message doesn't exist, create a new one
+        await this.messagesService.create({
+          content: `Call request accepted by ${admin.name}. Join the call: ${this.getDomain()}/${result.room.name}`,
+          queryId,
+          senderId: adminId,
+          messageType: MessageType.SYSTEM,
+          callMode: callRequest.mode,
+          roomName: result.room.name,
+          callSessionId: result.callSession.id,
+          callRequestId: callRequest.id,
+          userToken: result.tokens.user,
+        });
+      }
 
       return {
         ...result,
@@ -602,6 +643,15 @@ export class CallsService implements OnModuleInit {
         throw new Error(`Call request with ID ${callRequestId} not found`);
       }
 
+      // Get admin details
+      const admin = await this.prisma.user.findUnique({
+        where: { id: adminId },
+      });
+      
+      if (!admin) {
+        throw new Error(`Admin with ID ${adminId} not found`);
+      }
+
       // Update the call request status to REJECTED
       const updatedCallRequest = await this.prisma.callRequest.update({
         where: { id: callRequestId },
@@ -615,14 +665,35 @@ export class CallsService implements OnModuleInit {
         },
       });
 
-      // Create a message indicating the call request was rejected
-      await this.messagesService.create({
-        content: `Call request rejected by admin`,
-        queryId: callRequest.queryId,
-        senderId: adminId,
-        messageType: MessageType.SYSTEM,
-        callRequestId: callRequest.id,
+      // Find the original call request message
+      const originalMessage = await this.prisma.message.findFirst({
+        where: {
+          callRequestId: callRequest.id,
+          messageType: MessageType.SYSTEM,
+        },
       });
+
+      if (originalMessage) {
+        // Update the existing message instead of creating a new one
+        const updatedContent = `${originalMessage.content}\n\n**❌ REJECTED by ${admin.name}**`;
+        
+        await this.prisma.message.update({
+          where: { id: originalMessage.id },
+          data: {
+            content: updatedContent,
+            updatedAt: new Date(),
+          },
+        });
+      } else {
+        // If for some reason the original message doesn't exist, create a new one
+        await this.messagesService.create({
+          content: `Call request rejected by ${admin.name}`,
+          queryId: callRequest.queryId,
+          senderId: adminId,
+          messageType: MessageType.SYSTEM,
+          callRequestId: callRequest.id,
+        });
+      }
 
       return updatedCallRequest;
     } catch (error) {

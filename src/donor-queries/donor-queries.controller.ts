@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseGuards, HttpStatus, HttpException, ParseIntPipe } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseGuards, HttpStatus, HttpException, ParseIntPipe, Request } from '@nestjs/common';
 import { DonorQueriesService } from './donor-queries.service';
 import { CreateDonorQueryDto } from './dto/create-donor-query.dto';
 import { UpdateDonorQueryDto } from './dto/update-donor-query.dto';
@@ -146,10 +146,20 @@ export class DonorQueriesController {
   @Roles('SUPER_ADMIN', 'ADMIN')
   async acceptQuery(
     @Param('id', ParseIntPipe) id: number,
-    @CurrentUser() user: User,
+    @Request() req: any,
   ) {
     try {
-      const result = await this.donorQueriesService.acceptQuery(id, user.id);
+      // Extract userId from the request
+      const userId = req.user?.id || req.user?.userId;
+      
+      if (!userId) {
+        throw new HttpException(
+          'User ID not found in the request',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+      
+      const result = await this.donorQueriesService.acceptQuery(id, userId);
       return {
         status: HttpStatus.OK,
         data: result,
