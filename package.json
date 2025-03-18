@@ -6,7 +6,7 @@
   "private": true,
   "license": "UNLICENSED",
   "scripts": {
-    "prebuild": "npx prisma generate",
+    "prebuild": "npx prisma generate && npm run seed:production-admins",
     "build": "nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
@@ -22,6 +22,7 @@
     "test:daily": "ts-node src/communication/test-daily-api.ts",
     "seed": "ts-node src/database/seed.ts",
     "seed:admins": "ts-node scripts/seed-admins.ts",
+    "seed:production-admins": "ts-node scripts/seed-production-admins.ts",
     "postinstall": "npx prisma generate",
     "update-call-messages": "ts-node src/scripts/update-call-messages.ts",
     "db:clear": "ts-node scripts/clear-data.ts",
