@@ -990,6 +990,11 @@ curl --location --request GET 'http://localhost:3000/messages/between/456/789'
 }
 ```
 
+**Notes:**
+- When a donor requests a call, a system message is created that will be visible in the chat thread
+- The system message will be updated (not replaced) when an admin accepts or rejects the request
+- Call requests can be in one of three states: PENDING, ACCEPTED, or REJECTED
+
 #### GET /communication/call/:queryId/requests
 
 **Purpose:** List all pending call requests for a specific query. This endpoint is restricted to the admin who is assigned to that query.
@@ -1095,6 +1100,13 @@ curl --location --request POST 'http://localhost:3000/communication/call/123/acc
 }
 ```
 
+**Notes:**
+- When a call request is accepted:
+  1. The call request's status is updated to "ACCEPTED"
+  2. A new call session is created
+  3. **The original system message in the chat thread is updated** to show that it's been accepted, along with a join link
+  4. No additional system message is created for the call start
+
 #### POST /communication/call/:queryId/accept-request
 
 **Purpose:** Accept the most recent pending call request for a query. This endpoint is restricted to the admin who is assigned to the query.
@@ -1151,6 +1163,14 @@ curl --location --request POST 'http://localhost:3000/communication/call/123/acc
 }
 ```
 
+**Notes:**
+- When no specific requestId is provided, the system will accept the latest pending call request for the query
+- The message formatting of the accepted call will include:
+  - The original call request message
+  - Text showing which admin accepted the call (with ✅ emoji)
+  - A formatted markdown link for joining the call
+  - The call mode (video/audio)
+
 #### POST /communication/call/:queryId/reject-request/:requestId
 
 **Purpose:** Reject a specific call request by ID. This endpoint is restricted to the admin who is assigned to the query.
@@ -1189,6 +1209,13 @@ curl --location --request POST 'http://localhost:3000/communication/call/123/rej
     }
 }
 ```
+
+**Notes:**
+- When a call request is rejected:
+  1. The call request's status is updated to "REJECTED"
+  2. **The original system message in the chat thread is updated** to show that it's been rejected, including which admin rejected it
+  3. No additional system message is created for the rejection
+  4. The rejection message includes a ❌ emoji and the admin's name for clarity
 
 **Error Response:**
 ```json
