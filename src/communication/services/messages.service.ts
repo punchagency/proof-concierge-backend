@@ -194,6 +194,7 @@ export class MessagesService {
               status: true,
               roomName: true,
               userToken: true,
+              adminToken: true,
               startedAt: true,
               endedAt: true,
             },
