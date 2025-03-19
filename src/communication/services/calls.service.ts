@@ -7,6 +7,7 @@ import { PrismaService } from '../../database/prisma.service';
 import { CallMode, CallStatus, MessageType, Prisma, CallSession } from '@prisma/client';
 import { MessagesService } from './messages.service';
 import { NotificationsService } from '../../notifications/notifications.service';
+import { Cron, CronExpression } from '@nestjs/schedule';
 
 @Injectable()
 export class CallsService implements OnModuleInit {
@@ -780,6 +781,142 @@ export class CallsService implements OnModuleInit {
     } catch (error) {
       this.logger.error(`Error getting call session with ID ${callSessionId}:`, error);
       throw error;
+    }
+  }
+
+  // Check for expired calls every 5 minutes
+  @Cron(CronExpression.EVERY_5_MINUTES)
+  async checkExpiredCalls() {
+    this.logger.log('Checking for expired calls...');
+
+    try {
+      // Get all active call sessions (CREATED or STARTED)
+      const activeCalls = await this.prisma.callSession.findMany({
+        where: {
+          status: {
+            in: [CallStatus.CREATED, CallStatus.STARTED]
+          }
+        },
+        include: {
+          query: true,
+        }
+      });
+
+      const now = new Date().getTime();
+      const expiredCalls: typeof activeCalls = [];
+
+      for (const call of activeCalls) {
+        // Call is created with a 2-hour expiry in Daily.co
+        const callCreationTime = call.createdAt.getTime();
+        const callExpirationTime = callCreationTime + (120 * 60 * 1000); // 120 minutes in milliseconds
+
+        // Check if the call has expired
+        if (now > callExpirationTime) {
+          expiredCalls.push(call);
+
+          // Update call session status and end time
+          await this.prisma.callSession.update({
+            where: { id: call.id },
+            data: {
+              status: CallStatus.ENDED,
+              endedAt: new Date(),
+            },
+          });
+
+          // Create 'Call ended' message
+          await this.messagesService.create({
+            queryId: call.queryId,
+            senderId: call.adminId,
+            content: 'Call expired',
+            messageType: MessageType.CALL_ENDED,
+            callMode: call.mode,
+            roomName: call.roomName,
+            callSessionId: call.id,
+          });
+
+          // Clean up room in Daily.co
+          try {
+            await this.deleteRoom(call.roomName);
+          } catch (error) {
+            this.logger.error(`Failed to delete expired room ${call.roomName}:`, error);
+          }
+        }
+      }
+
+      if (expiredCalls.length > 0) {
+        this.logger.log(`Ended ${expiredCalls.length} expired calls`);
+      }
+    } catch (error) {
+      this.logger.error('Error checking for expired calls:', error);
+    }
+  }
+
+  // Check for active calls that have exceeded their meeting duration
+  @Cron(CronExpression.EVERY_MINUTE)
+  async checkActiveCalls() {
+    try {
+      // Get all started calls with a startedAt time
+      const activeCalls = await this.prisma.callSession.findMany({
+        where: {
+          status: CallStatus.STARTED,
+          startedAt: {
+            not: null
+          }
+        },
+        include: {
+          query: true,
+        }
+      });
+
+      const now = new Date().getTime();
+      const longRunningCalls: typeof activeCalls = [];
+
+      // Standard meeting duration in minutes (configurable)
+      const standardMeetingDuration = 60; // 60 minutes by default
+
+      for (const call of activeCalls) {
+        if (!call.startedAt) continue; // Skip if no startedAt time (shouldn't happen due to query condition)
+        
+        const callStartTime = call.startedAt.getTime();
+        const meetingDurationTime = callStartTime + (standardMeetingDuration * 60 * 1000); // Duration in milliseconds
+
+        // Check if the call has exceeded the standard meeting duration
+        if (now > meetingDurationTime) {
+          longRunningCalls.push(call);
+
+          // We don't end these calls automatically, but we mark them as "running long"
+          // by creating a message indicating the call has exceeded its standard duration
+          
+          // Check if we've already sent a message about this (avoid duplicates)
+          const existingMessage = await this.prisma.message.findFirst({
+            where: {
+              callSessionId: call.id,
+              content: {
+                contains: 'exceeded the standard meeting duration'
+              }
+            }
+          });
+
+          if (!existingMessage) {
+            // Create message about the call exceeding standard duration
+            await this.messagesService.create({
+              queryId: call.queryId,
+              senderId: call.adminId,
+              content: 'This call has exceeded the standard meeting duration. You can end it at any time.',
+              messageType: MessageType.SYSTEM,
+              callMode: call.mode,
+              roomName: call.roomName,
+              callSessionId: call.id,
+            });
+          }
+        }
+      }
+
+      if (longRunningCalls.length > 0) {
+        this.logger.log(`Found ${longRunningCalls.length} calls exceeding standard meeting duration`);
+      }
+    } catch (error) {
+      this.logger.error('Error checking active calls:', error);
     }
   }
 }
