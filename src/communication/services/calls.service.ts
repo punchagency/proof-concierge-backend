@@ -129,6 +129,10 @@ export class CallsService implements OnModuleInit {
           queryId: queryId,
           status: 'ACCEPTED',
           adminId: adminId,
+          // Only consider recently accepted call requests (within the last 10 seconds)
+          updatedAt: {
+            gte: new Date(Date.now() - 10 * 1000) // 10 seconds ago
+          }
         },
         orderBy: {
           updatedAt: 'desc',
@@ -137,7 +141,10 @@ export class CallsService implements OnModuleInit {
 
       // Only create a call started message if it's not from accepting a call request
       if (!isFromCallRequest) {
+        this.logger.log(`Call is not from a call request. Creating call started message for queryId: ${queryId}`);
         await this.createCallStartedMessage(queryId, adminId, callSession, callMode);
+      } else {
+        this.logger.log(`Call is from a call request. Not creating a separate call started message for queryId: ${queryId}`);
       }
 
       return {
@@ -605,6 +612,7 @@ export class CallsService implements OnModuleInit {
   }
 
   async createCallStartedMessage(queryId: number, adminId: number, callSession: CallSession, mode: CallMode) {
+    this.logger.log(`Creating call started message for queryId: ${queryId}, adminId: ${adminId}, roomName: ${callSession.roomName}`);
     const content = `Call started by admin. Mode: ${mode}`;
     
     // Create the message with isFromAdmin set to true

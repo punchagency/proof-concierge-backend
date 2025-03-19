@@ -24,6 +24,7 @@ import { PrismaService } from '../../database/prisma.service';
 import { StartCallDto } from '../dto/start-call.dto';
 import { Public } from 'src/auth/public.decorator';
 import { CreateCallRequestDto } from '../dto/create-call-request.dto';
+import { MessageType } from '@prisma/client';
 
 @Controller({
   path: 'communication/call',
@@ -91,6 +92,18 @@ export class CallsController {
           result.room.name,
           result.callSession.mode === CallMode.AUDIO ? 'audio' : 'video'
         );
+      }
+
+      // Check if the call message was created
+      this.logger.log(`Checking for call messages for queryId: ${queryId}`);
+      const messages = await this.messagesService.findMessages({
+        queryId,
+        messageType: MessageType.CALL_STARTED,
+        limit: 10
+      });
+      this.logger.log(`Found ${messages.length} CALL_STARTED messages for queryId: ${queryId}`);
+      if (messages.length > 0) {
+        this.logger.log(`Latest call message: ${JSON.stringify(messages[0])}`);
       }
 
       return {

@@ -35,6 +35,7 @@ export class MessagesController {
   }
 
   @Get('query/:queryId')
+  @Public()
   async getQueryMessages(@Param('queryId') queryId: string) {
     const messages = await this.messagesService.findQueryMessages(+queryId);
     return {
