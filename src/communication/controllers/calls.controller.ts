@@ -427,7 +427,7 @@ export class CallsController {
   }
 
   @Get('calls/:queryId')
-  async getCallsForQuery(@Param('queryId') queryId: string) {
+  async getCallDetailsByQueryId(@Param('queryId') queryId: string) {
     try {
       this.logger.log(`Getting calls for queryId: ${queryId}`);
       
@@ -460,6 +460,44 @@ export class CallsController {
       this.logger.error('Error getting calls for query:', error);
       throw new HttpException(
         error.message || 'Failed to get calls',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  @Get('call-session/:callSessionId')
+  async getCallSessionById(@Param('callSessionId', ParseIntPipe) callSessionId: number, @Request() req: any) {
+    try {
+      // Get admin ID from request
+      const adminId = req.user?.id || req.user?.userId || req.userId;
+      
+      if (!adminId) {
+        throw new HttpException(
+          'Admin ID is required',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+      
+      // First get the call session to check if admin has access
+      const callSession = await this.callsService.getCallSessionById(callSessionId);
+      
+      // Verify that the admin has access to this query
+      const hasAccess = await this.callsService.validateAdminAccess(callSession.queryId, adminId);
+      if (!hasAccess) {
+        throw new HttpException(
+          'You are not authorized to view this call session',
+          HttpStatus.FORBIDDEN,
+        );
+      }
+      
+      return {
+        status: HttpStatus.OK,
+        data: callSession,
+      };
+    } catch (error) {
+      this.logger.error(`Error getting call session by ID ${callSessionId}:`, error);
+      throw new HttpException(
+        error.message || 'Failed to get call session',
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }

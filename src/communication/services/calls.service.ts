@@ -437,36 +437,51 @@ export class CallsService implements OnModuleInit {
     }
   }
 
-  async validateAdminAccess(queryId: number, adminId: number) {
+  async validateAdminAccess(queryId: number, adminId: number): Promise<boolean> {
     try {
       // Validate inputs
       if (!queryId) {
         this.logger.error('Query ID is required for validateAdminAccess');
-        return null;
+        return false;
       }
       
       if (!adminId) {
         this.logger.error('Admin ID is required for validateAdminAccess');
-        return null;
+        return false;
       }
       
-      const query = await this.prisma.donorQuery.findFirst({
-        where: {
+      // First check if the admin exists
+      const admin = await this.prisma.user.findUnique({
+        where: { id: adminId },
+      });
+      
+      if (!admin) {
+        this.logger.error(`Admin with ID ${adminId} not found`);
+        return false;
+      }
+      
+      // Check if admin is a super admin - they can access all queries
+      if (admin.role === 'SUPER_ADMIN') {
+        return true;
+      }
+      
+      // Check if the admin is assigned to this query
+      const query = await this.prisma.donorQuery.findUnique({
+        where: { 
           id: queryId,
-          assignedToUser: {
-            id: adminId
-          }
+          assignedToId: adminId,
         },
       });
       
       if (!query) {
         this.logger.warn(`Admin ${adminId} is not assigned to query ${queryId}`);
+        return false;
       }
       
-      return query;
+      return true;
     } catch (error) {
       this.logger.error(`Error validating admin access: ${error.message}`, error.stack);
-      return null;
+      return false;
     }
   }
 
@@ -701,6 +716,69 @@ export class CallsService implements OnModuleInit {
       return updatedCallRequest;
     } catch (error) {
       this.logger.error('Error rejecting call request:', error);
+      throw error;
+    }
+  }
+
+  async getCallsForQuery(queryId: number) {
+    try {
+      return await this.prisma.callSession.findMany({
+        where: {
+          queryId,
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+        include: {
+          admin: {
+            select: {
+              id: true,
+              name: true,
+              username: true,
+              email: true,
+              role: true,
+            },
+          },
+        },
+      });
+    } catch (error) {
+      this.logger.error(`Error getting calls for query ${queryId}:`, error);
+      throw error;
+    }
+  }
+
+  async getCallSessionById(callSessionId: number) {
+    try {
+      const callSession = await this.prisma.callSession.findUnique({
+        where: {
+          id: callSessionId,
+        },
+        include: {
+          admin: {
+            select: {
+              id: true,
+              name: true,
+              username: true,
+              email: true,
+              role: true,
+            },
+          },
+          query: true,
+          messages: {
+            orderBy: {
+              createdAt: 'asc',
+            },
+          },
+        },
+      });
+
+      if (!callSession) {
+        throw new Error(`Call session with ID ${callSessionId} not found`);
+      }
+
+      return callSession;
+    } catch (error) {
+      this.logger.error(`Error getting call session with ID ${callSessionId}:`, error);
       throw error;
     }
   }
