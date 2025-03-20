@@ -7,7 +7,6 @@ import { QueryStatus, User } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Roles } from '../auth/roles.decorator';
 import { Public } from '../auth/public.decorator';
-import { CurrentUser } from '../auth/current-user.decorator';
 import { GetUser } from '../auth/get-user.decorator';
 
 @Controller({
