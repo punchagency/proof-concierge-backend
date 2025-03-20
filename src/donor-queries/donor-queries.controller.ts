@@ -52,10 +52,10 @@ export class DonorQueriesController {
   @Public()
   async findGeneral(@Query() filterDto: FilterDonorQueriesDto) {
     try {
-      // Add default status filter for IN_PROGRESS queries
-      filterDto.status = QueryStatus.IN_PROGRESS;
+      // Get queries with both IN_PROGRESS and PENDING_REPLY statuses
+      const statuses = [QueryStatus.IN_PROGRESS, QueryStatus.PENDING_REPLY];
+      const queries = await this.donorQueriesService.findManyByStatusesWithFilters(statuses, filterDto);
       
-      const queries = await this.donorQueriesService.findWithFilters(filterDto);
       return {
         status: HttpStatus.OK,
         data: queries,
