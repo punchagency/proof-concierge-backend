@@ -205,9 +205,19 @@ export class DonorQueriesService {
 
   async resolveQuery(id: number, resolvedById: number) {
     // Ensure the query exists
-    await this.findOne(id);
+    const query = await this.findOne(id);
     
-    return this.prisma.donorQuery.update({
+    // Get the user who is resolving the query
+    const user = await this.prisma.user.findUnique({
+      where: { id: resolvedById },
+    });
+
+    if (!user) {
+      throw new Error('User not found');
+    }
+    
+    // Update the query status to RESOLVED
+    const updatedQuery = await this.prisma.donorQuery.update({
       where: { 
         id: id 
       },
@@ -219,6 +229,17 @@ export class DonorQueriesService {
         resolvedByUser: true,
       },
     });
+    
+    // Create a system message for the query resolution
+    await this.messagesService.create({
+      content: `Query #${id} has been resolved by ${user.name}`,
+      queryId: id,
+      senderId: resolvedById,
+      messageType: MessageType.SYSTEM,
+      isFromAdmin: true,
+    });
+    
+    return updatedQuery;
   }
 
   async setPendingReply(id: number) {
@@ -251,9 +272,19 @@ export class DonorQueriesService {
 
   async transferQuery(id: number, transferredToUserId: number, transferredTo: string, transferNote?: string) {
     // Ensure the query exists
-    await this.findOne(id);
+    const query = await this.findOne(id);
     
-    return this.prisma.donorQuery.update({
+    // Get the user who the query is being transferred to
+    const user = await this.prisma.user.findUnique({
+      where: { id: transferredToUserId },
+    });
+
+    if (!user) {
+      throw new Error('User not found');
+    }
+    
+    // Update the query status to TRANSFERRED
+    const updatedQuery = await this.prisma.donorQuery.update({
       where: { 
         id: id 
       },
@@ -267,6 +298,18 @@ export class DonorQueriesService {
         transferredToUser: true,
       },
     });
+    
+    // Create a system message for the query transfer
+    const noteMessage = transferNote ? ` with note: "${transferNote}"` : '';
+    await this.messagesService.create({
+      content: `Query #${id} has been transferred to ${transferredTo}${noteMessage}`,
+      queryId: id,
+      senderId: transferredToUserId,
+      messageType: MessageType.SYSTEM,
+      isFromAdmin: true,
+    });
+    
+    return updatedQuery;
   }
 
   async remove(id: number) {
