@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { NotificationsService } from '../../notifications/notifications.service';
-import { Message, MessageType, CallMode, User, UserRole } from '@prisma/client';
+import { Message, MessageType, CallMode, User, UserRole, QueryStatus } from '@prisma/client';
 
 export interface CreateMessageDto {
   content: string;
@@ -68,6 +68,34 @@ export class MessagesService {
           callRequest: data.callRequestId ? true : undefined,
         },
       });
+
+      // Update query status based on who sent the message
+      if (data.queryId && data.messageType === MessageType.QUERY) {
+        // Get current query status
+        const query = await this.prisma.donorQuery.findUnique({
+          where: { id: data.queryId },
+          select: { status: true }
+        });
+        
+        // Only update status if it's not already resolved or transferred
+        if (query && query.status !== QueryStatus.RESOLVED && query.status !== QueryStatus.TRANSFERRED) {
+          // Only update status for normal query messages, not system messages
+          const isFromAdmin = data.isFromAdmin ?? false;
+          let newStatus: QueryStatus;
+          
+          if (isFromAdmin) {
+            newStatus = QueryStatus.IN_PROGRESS;
+          } else {
+            newStatus = QueryStatus.PENDING_REPLY;
+          }
+
+          // Update the query status
+          await this.prisma.donorQuery.update({
+            where: { id: data.queryId },
+            data: { status: newStatus },
+          });
+        }
+      }
 
       // Send push notification if FCM token is provided
       if (data.fcmToken && this.notificationsService.isValidFcmToken(data.fcmToken)) {

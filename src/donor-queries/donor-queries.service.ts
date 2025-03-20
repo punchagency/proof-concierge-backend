@@ -64,6 +64,21 @@ export class DonorQueriesService {
       // Extract fields from the DTO
       const { donor, donorId, test, stage, device, content } = createDonorQueryDto;
       
+      // Check if the donor already has an unresolved query
+      const existingUnresolvedQueries = await this.prisma.donorQuery.findMany({
+        where: {
+          donorId: donorId,
+          status: {
+            notIn: [QueryStatus.RESOLVED, QueryStatus.TRANSFERRED]
+          }
+        },
+        take: 1
+      });
+      
+      if (existingUnresolvedQueries.length > 0) {
+        throw new Error('You already have an active query that has not been resolved. Please wait for your current query to be resolved before creating a new one.');
+      }
+      
       // Use raw SQL to insert the record with only the fields that exist in the database
       const result = await this.prisma.$queryRaw`
         INSERT INTO "DonorQuery" ("donor", "donorId", "test", "stage", "device", "createdAt", "updatedAt")
@@ -202,6 +217,34 @@ export class DonorQueriesService {
       },
       include: {
         resolvedByUser: true,
+      },
+    });
+  }
+
+  async setPendingReply(id: number) {
+    // Ensure the query exists
+    await this.findOne(id);
+    
+    return this.prisma.donorQuery.update({
+      where: { 
+        id: id 
+      },
+      data: {
+        status: QueryStatus.PENDING_REPLY,
+      },
+    });
+  }
+
+  async setInProgress(id: number) {
+    // Ensure the query exists
+    await this.findOne(id);
+    
+    return this.prisma.donorQuery.update({
+      where: { 
+        id: id 
+      },
+      data: {
+        status: QueryStatus.IN_PROGRESS,
       },
     });
   }

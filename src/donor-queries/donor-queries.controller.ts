@@ -8,6 +8,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Roles } from '../auth/roles.decorator';
 import { Public } from '../auth/public.decorator';
 import { CurrentUser } from '../auth/current-user.decorator';
+import { GetUser } from '../auth/get-user.decorator';
 
 @Controller({
   path: 'donor-queries',
@@ -20,11 +21,21 @@ export class DonorQueriesController {
   @Post()
   @Public()
   async create(@Body() createDonorQueryDto: CreateDonorQueryDto) {
-    const query = await this.donorQueriesService.create(createDonorQueryDto);
-    return {
-      status: HttpStatus.CREATED,
-      data: query,
-    };
+    try {
+      const query = await this.donorQueriesService.create(createDonorQueryDto);
+      return {
+        status: HttpStatus.CREATED,
+        data: query,
+      };
+    } catch (error) {
+      throw new HttpException(
+        {
+          status: HttpStatus.BAD_REQUEST,
+          message: error.message || 'Failed to create query',
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
   }
 
   @Get()
@@ -141,9 +152,33 @@ export class DonorQueriesController {
   @Roles('SUPER_ADMIN', 'ADMIN')
   async resolveQuery(
     @Param('id', ParseIntPipe) id: number,
-    @CurrentUser() user: User,
+    @GetUser() user: User,
   ) {
     const query = await this.donorQueriesService.resolveQuery(id, user.id);
+    return {
+      status: HttpStatus.OK,
+      data: query,
+    };
+  }
+
+  @Post(':id/pending-reply')
+  @Roles('SUPER_ADMIN', 'ADMIN')
+  async setPendingReply(
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    const query = await this.donorQueriesService.setPendingReply(id);
+    return {
+      status: HttpStatus.OK,
+      data: query,
+    };
+  }
+
+  @Post(':id/in-progress')
+  @Roles('SUPER_ADMIN', 'ADMIN')
+  async setInProgress(
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    const query = await this.donorQueriesService.setInProgress(id);
     return {
       status: HttpStatus.OK,
       data: query,

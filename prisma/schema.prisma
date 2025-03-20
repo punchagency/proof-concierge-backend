@@ -133,6 +133,7 @@ enum QueryMode {
 
 enum QueryStatus {
   IN_PROGRESS
+  PENDING_REPLY
   RESOLVED
   TRANSFERRED
 }

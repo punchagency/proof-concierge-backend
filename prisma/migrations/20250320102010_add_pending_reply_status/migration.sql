@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "QueryStatus" ADD VALUE 'PENDING_REPLY';
