@@ -81,6 +81,86 @@ export class DonorQueriesController {
     };
   }
 
+  @Get('resolved')
+  @Roles('SUPER_ADMIN', 'ADMIN')
+  async findResolved(@Query() filterDto: FilterDonorQueriesDto) {
+    try {
+      const queries = await this.donorQueriesService.findManyByStatusesWithFilters([QueryStatus.RESOLVED], filterDto);
+      return {
+        status: HttpStatus.OK,
+        data: queries,
+      };
+    } catch (error) {
+      throw new HttpException(
+        {
+          status: HttpStatus.BAD_REQUEST,
+          message: error.message || 'Failed to fetch resolved queries',
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  @Get('transferred')
+  @Roles('SUPER_ADMIN', 'ADMIN')
+  async findTransferred(@Query() filterDto: FilterDonorQueriesDto) {
+    try {
+      const queries = await this.donorQueriesService.findManyByStatusesWithFilters([QueryStatus.TRANSFERRED], filterDto);
+      return {
+        status: HttpStatus.OK,
+        data: queries,
+      };
+    } catch (error) {
+      throw new HttpException(
+        {
+          status: HttpStatus.BAD_REQUEST,
+          message: error.message || 'Failed to fetch transferred queries',
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  @Get('in-progress')
+  @Roles('SUPER_ADMIN', 'ADMIN')
+  async findInProgress(@Query() filterDto: FilterDonorQueriesDto) {
+    try {
+      const queries = await this.donorQueriesService.findManyByStatusesWithFilters([QueryStatus.IN_PROGRESS], filterDto);
+      return {
+        status: HttpStatus.OK,
+        data: queries,
+      };
+    } catch (error) {
+      throw new HttpException(
+        {
+          status: HttpStatus.BAD_REQUEST,
+          message: error.message || 'Failed to fetch in-progress queries',
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  @Get('pending-reply')
+  @Roles('SUPER_ADMIN', 'ADMIN')
+  async findPendingReply(@Query() filterDto: FilterDonorQueriesDto) {
+    try {
+      const queries = await this.donorQueriesService.findManyByStatusesWithFilters([QueryStatus.PENDING_REPLY], filterDto);
+      return {
+        status: HttpStatus.OK,
+        data: queries,
+      };
+    } catch (error) {
+      throw new HttpException(
+        {
+          status: HttpStatus.BAD_REQUEST,
+          message: error.message || 'Failed to fetch pending-reply queries',
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
   @Get('user')
   @Public()
   async findByDonorIdQuery(@Query('donorId') donorId: string) {
