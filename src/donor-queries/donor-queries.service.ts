@@ -3,14 +3,20 @@ import { PrismaService } from '../database/prisma.service';
 import { CreateDonorQueryDto } from './dto/create-donor-query.dto';
 import { UpdateDonorQueryDto } from './dto/update-donor-query.dto';
 import { FilterDonorQueriesDto } from './dto/filter-donor-queries.dto';
-import { QueryStatus, MessageType } from '@prisma/client';
+import { QueryStatus, MessageType, CallStatus } from '@prisma/client';
 import { MessagesService } from '../communication/services/messages.service';
+import { CallsService } from '../communication/services/calls.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationsGateway } from '../notifications/notifications.gateway';
 
 @Injectable()
 export class DonorQueriesService {
   constructor(
     private prisma: PrismaService,
     private messagesService: MessagesService,
+    private callsService: CallsService,
+    private notificationsService: NotificationsService,
+    private notificationsGateway: NotificationsGateway,
   ) {}
 
   async findAll() {
@@ -97,6 +103,25 @@ export class DonorQueriesService {
           messageType: MessageType.QUERY
         });
       }
+      
+      // Send push notification to all admins about the new query
+      await this.notificationsService.notifyAllAdmins(
+        'New Donor Query',
+        `New query from ${donor} for ${test}`,
+        {
+          type: 'new_query',
+          queryId: query.id?.toString() || '',
+          donorId: donorId,
+          test: test,
+          timestamp: new Date().toISOString(),
+        }
+      );
+      
+      // Send real-time WebSocket notification to all admins
+      this.notificationsGateway.notifyNewQuery(
+        query.id, 
+        `${donor} - ${test} (${stage})`
+      );
       
       // Return the first result (should be the only one)
       return query;
@@ -239,14 +264,24 @@ export class DonorQueriesService {
       isFromAdmin: true,
     });
     
+    // End all active calls related to this query
+    await this.callsService.endAllActiveCallsForQuery(id);
+    
+    // Send real-time WebSocket notification
+    this.notificationsGateway.notifyQueryStatusChange(
+      id, 
+      'RESOLVED', 
+      user.name
+    );
+    
     return updatedQuery;
   }
 
   async setPendingReply(id: number) {
     // Ensure the query exists
-    await this.findOne(id);
+    const query = await this.findOne(id);
     
-    return this.prisma.donorQuery.update({
+    const updatedQuery = await this.prisma.donorQuery.update({
       where: { 
         id: id 
       },
@@ -254,13 +289,21 @@ export class DonorQueriesService {
         status: QueryStatus.PENDING_REPLY,
       },
     });
+    
+    // Send real-time WebSocket notification
+    this.notificationsGateway.notifyQueryStatusChange(
+      id, 
+      'PENDING_REPLY'
+    );
+    
+    return updatedQuery;
   }
 
   async setInProgress(id: number) {
     // Ensure the query exists
-    await this.findOne(id);
+    const query = await this.findOne(id);
     
-    return this.prisma.donorQuery.update({
+    const updatedQuery = await this.prisma.donorQuery.update({
       where: { 
         id: id 
       },
@@ -268,6 +311,14 @@ export class DonorQueriesService {
         status: QueryStatus.IN_PROGRESS,
       },
     });
+    
+    // Send real-time WebSocket notification
+    this.notificationsGateway.notifyQueryStatusChange(
+      id, 
+      'IN_PROGRESS'
+    );
+    
+    return updatedQuery;
   }
 
   async transferQuery(id: number, transferredToUserId: number, transferredTo: string, transferNote?: string) {
@@ -308,6 +359,20 @@ export class DonorQueriesService {
       messageType: MessageType.SYSTEM,
       isFromAdmin: true,
     });
+    
+    // End all active calls related to this query
+    await this.callsService.endAllActiveCallsForQuery(id);
+    
+    // Send real-time WebSocket notification
+    this.notificationsGateway.notifyQueryTransfer(
+      id, 
+      transferredTo, 
+      transferredToUserId
+    );
+    this.notificationsGateway.notifyQueryStatusChange(
+      id, 
+      'TRANSFERRED'
+    );
     
     return updatedQuery;
   }
@@ -494,6 +559,10 @@ export class DonorQueriesService {
         },
       });
 
+      // Send real-time WebSocket notification
+      this.notificationsGateway.notifyQueryAssignment(id, userId);
+      this.notificationsGateway.notifyQueryStatusChange(id, 'IN_PROGRESS', user.name);
+
       // Return the updated query
       return updatedQuery;
     } catch (error) {
@@ -584,5 +653,53 @@ export class DonorQueriesService {
         assignedToUser: true,
       },
     });
+  }
+
+  async donorCloseQuery(id: number, donorId: string) {
+    try {
+      // Ensure the query exists
+      const query = await this.findOne(id);
+      
+      // Verify this is the donor's query
+      if (query.donorId !== donorId) {
+        throw new Error('You are not authorized to close this query');
+      }
+      
+      // Check if the query is already resolved or transferred
+      if (query.status === QueryStatus.RESOLVED || query.status === QueryStatus.TRANSFERRED) {
+        throw new Error('Query is already closed');
+      }
+      
+      // Update the query status to RESOLVED
+      const updatedQuery = await this.prisma.donorQuery.update({
+        where: { id },
+        data: {
+          status: QueryStatus.RESOLVED,
+        },
+      });
+      
+      // Create a system message for the query closure
+      await this.messagesService.create({
+        content: `Query #${id} has been closed by the donor`,
+        queryId: id,
+        messageType: MessageType.SYSTEM,
+        isFromAdmin: false,
+      });
+      
+      // End all active calls related to this query
+      await this.callsService.endAllActiveCallsForQuery(id);
+      
+      // Send real-time WebSocket notification
+      this.notificationsGateway.notifyQueryStatusChange(
+        id, 
+        'RESOLVED', 
+        'Donor'
+      );
+      
+      return updatedQuery;
+    } catch (error) {
+      console.error('Error closing query by donor:', error);
+      throw error;
+    }
   }
 } 

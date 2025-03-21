@@ -8,6 +8,7 @@ import { CommunicationModule } from './communication/communication.module';
 import { DonorQueriesModule } from './donor-queries/donor-queries.module';
 import { HealthModule } from './health/health.module';
 import { DatabaseModule } from './database/database.module';
+import { AppController } from './app.controller';
 
 @Module({
   imports: [
@@ -23,5 +24,6 @@ import { DatabaseModule } from './database/database.module';
     DonorQueriesModule,
     HealthModule,
   ],
+  controllers: [AppController],
 })
 export class AppModule {}

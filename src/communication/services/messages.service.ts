@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { Message, MessageType, CallMode, User, UserRole, QueryStatus } from '@prisma/client';
+import { NotificationsGateway } from '../../notifications/notifications.gateway';
 
 export interface CreateMessageDto {
   content: string;
@@ -35,6 +36,7 @@ export class MessagesService {
   constructor(
     private prisma: PrismaService,
     private notificationsService: NotificationsService,
+    private notificationsGateway: NotificationsGateway,
   ) {}
 
   async create(data: CreateMessageDto): Promise<Message> {
@@ -94,6 +96,12 @@ export class MessagesService {
             where: { id: data.queryId },
             data: { status: newStatus },
           });
+          
+          // Emit WebSocket event for status change
+          this.notificationsGateway.notifyQueryStatusChange(
+            data.queryId,
+            newStatus
+          );
         }
       }
 
@@ -125,6 +133,55 @@ export class MessagesService {
               },
             },
           },
+        );
+      }
+
+      // If this is a query message, also notify the assigned admin
+      if (data.queryId && data.messageType === MessageType.QUERY && !data.isFromAdmin) {
+        // Get the query details including assigned admin
+        const query = await this.prisma.donorQuery.findUnique({
+          where: { id: data.queryId },
+          include: {
+            assignedToUser: true
+          }
+        });
+        
+        // If there's an assigned admin with FCM token, send notification
+        if (query?.assignedToUser?.fcmToken) {
+          const senderName = message.sender?.name || 'Donor';
+          
+          await this.notificationsService.sendNotification(
+            query.assignedToUser.fcmToken,
+            {
+              notification: {
+                title: `New message for query #${data.queryId}`,
+                body: `${senderName}: ${data.content.substring(0, 100)}${data.content.length > 100 ? '...' : ''}`,
+              },
+              data: {
+                type: 'query_message',
+                messageId: message.id.toString(),
+                queryId: data.queryId.toString(),
+                timestamp: new Date().toISOString(),
+              },
+              android: {
+                priority: 'high',
+                notification: {
+                  channelId: 'messages',
+                  priority: 'high',
+                },
+              },
+            },
+          );
+        }
+      }
+      
+      // Emit WebSocket event for new message
+      if (data.queryId) {
+        this.notificationsGateway.notifyNewMessage(
+          data.queryId,
+          message.id,
+          data.senderId || 0,
+          data.isFromAdmin || false
         );
       }
 

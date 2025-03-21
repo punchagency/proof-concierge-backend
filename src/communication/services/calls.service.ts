@@ -927,4 +927,57 @@ export class CallsService implements OnModuleInit {
       this.logger.error('Error checking active calls:', error);
     }
   }
+
+  async endAllActiveCallsForQuery(queryId: number) {
+    try {
+      this.logger.log(`Ending all active calls for query ID ${queryId}`);
+      
+      // Find all active call sessions for this query
+      const activeCalls = await this.prisma.callSession.findMany({
+        where: {
+          queryId,
+          status: {
+            in: [CallStatus.CREATED, CallStatus.STARTED]
+          }
+        }
+      });
+      
+      this.logger.log(`Found ${activeCalls.length} active calls to end for query ${queryId}`);
+      
+      // End each active call
+      for (const call of activeCalls) {
+        await this.prisma.callSession.update({
+          where: { id: call.id },
+          data: {
+            status: CallStatus.ENDED,
+            endedAt: new Date(),
+          }
+        });
+        
+        // Create 'Call ended' message
+        await this.messagesService.create({
+          queryId: call.queryId,
+          senderId: call.adminId,
+          content: 'Call ended (query was resolved)',
+          messageType: MessageType.CALL_ENDED,
+          callMode: call.mode,
+          roomName: call.roomName,
+          callSessionId: call.id,
+          isFromAdmin: true,
+        });
+        
+        // Delete the room in Daily.co
+        try {
+          await this.deleteRoom(call.roomName);
+        } catch (error) {
+          this.logger.error(`Failed to delete room ${call.roomName} for resolved query:`, error);
+        }
+      }
+      
+      return activeCalls.length;
+    } catch (error) {
+      this.logger.error(`Error ending calls for query ${queryId}:`, error);
+      throw error;
+    }
+  }
 }

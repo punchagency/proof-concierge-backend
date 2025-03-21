@@ -20,6 +20,7 @@ This document provides a detailed guide to all the API endpoints in the Proof Co
     - [GET /donor-queries/:id](#get-donor-queriesid)
     - [GET /donor-queries/user](#get-donor-queriesuser)
     - [GET /donor-queries/general](#get-donor-queriesgeneral)
+    - [POST /donor-queries/:id/donor-close](#post-donor-queriesiddonor-close)
   - [Messages](#messages)
     - [POST /messages](#post-messages)
     - [GET /messages](#get-messages)
@@ -467,6 +468,84 @@ curl --location --request GET 'http://localhost:3000/donor-queries/general?test=
   ]
 }
 ```
+
+#### POST /donor-queries/:id/donor-close
+
+**Purpose:** Allow donors to close their own queries.
+
+**Request:**
+
+- **Method:** POST
+- **URL:** `/donor-queries/{id}/donor-close`
+- **Parameter:** `id` (number, parsed via `ParseIntPipe`)
+- **Body:**
+
+```json
+{
+  "donorId": "donor_001"
+}
+```
+
+**cURL Example:**
+
+```bash
+curl --location --request POST 'http://localhost:3000/donor-queries/123/donor-close' \
+--header 'Content-Type: application/json' \
+--data-raw '{
+    "donorId": "donor_001"
+}'
+```
+
+**Response:**
+
+```json
+{
+  "status": 200,
+  "data": {
+    "id": 123,
+    "sid": "session123",
+    "donor": "john.doe@example.com",
+    "donorId": "donor_001",
+    "test": "unit-test",
+    "stage": "initial",
+    "queryMode": "EMAIL",
+    "device": "web",
+    "status": "RESOLVED",
+    "createdAt": "2023-10-10T12:00:00.000Z",
+    "updatedAt": "2023-10-10T12:30:00.000Z"
+  },
+  "message": "Query closed successfully"
+}
+```
+
+**Error Responses:**
+
+```json
+{
+  "status": 400,
+  "message": "Donor ID is required"
+}
+```
+
+```json
+{
+  "status": 400,
+  "message": "You are not authorized to close this query"
+}
+```
+
+```json
+{
+  "status": 400,
+  "message": "Query is already closed"
+}
+```
+
+**Notes:**
+- This endpoint is public (no authentication required) but requires the `donorId` parameter to verify the donor's identity.
+- When a donor closes a query, its status is set to RESOLVED, a system message is created, and any active calls are ended.
+- Real-time WebSocket notifications are sent to inform admins that the query has been closed by the donor.
+- A donor can only close queries that are in progress or pending reply, not already resolved or transferred queries.
 
 ### Messages
 

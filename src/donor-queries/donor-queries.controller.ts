@@ -339,4 +339,35 @@ export class DonorQueriesController {
       data: queries,
     };
   }
+
+  @Post(':id/donor-close')
+  @Public()
+  async donorCloseQuery(
+    @Param('id', ParseIntPipe) id: number,
+    @Body('donorId') donorId: string,
+  ) {
+    try {
+      if (!donorId) {
+        throw new HttpException(
+          'Donor ID is required',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+      
+      const query = await this.donorQueriesService.donorCloseQuery(id, donorId);
+      return {
+        status: HttpStatus.OK,
+        data: query,
+        message: 'Query closed successfully',
+      };
+    } catch (error) {
+      throw new HttpException(
+        {
+          status: HttpStatus.BAD_REQUEST,
+          message: error.message || 'Failed to close query',
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
 }

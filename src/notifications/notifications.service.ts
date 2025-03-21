@@ -1,6 +1,8 @@
 import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
 import * as admin from 'firebase-admin';
 import { ConfigService } from '@nestjs/config';
+import { PrismaService } from '../database/prisma.service';
+import { UserRole } from '@prisma/client';
 
 @Injectable()
 export class NotificationsService implements OnModuleInit {
@@ -8,7 +10,10 @@ export class NotificationsService implements OnModuleInit {
   private adminApp: admin.app.App;
   private isInitialized = false;
 
-  constructor(private configService: ConfigService) {}
+  constructor(
+    private configService: ConfigService,
+    private prisma: PrismaService
+  ) {}
 
   onModuleInit() {
     try {
@@ -254,5 +259,75 @@ export class NotificationsService implements OnModuleInit {
     }
     
     return result;
+  }
+
+  /**
+   * Get FCM tokens for all admin users
+   * @returns Array of FCM tokens for admin users
+   */
+  async getAdminFcmTokens(): Promise<string[]> {
+    try {
+      // Find all admin and super admin users with FCM tokens
+      const admins = await this.prisma.user.findMany({
+        where: {
+          role: {
+            in: [UserRole.ADMIN, UserRole.SUPER_ADMIN]
+          },
+          fcmToken: {
+            not: null
+          }
+        },
+        select: {
+          fcmToken: true
+        }
+      });
+      
+      // Extract FCM tokens from users, filter out any null values, and validate tokens
+      const tokens = admins
+        .map(admin => admin.fcmToken)
+        .filter((token): token is string => !!token && this.isValidFcmToken(token));
+      
+      this.logger.log(`Found ${tokens.length} admin FCM tokens`);
+      return tokens;
+    } catch (error) {
+      this.logger.error(`Error getting admin FCM tokens: ${error.message}`, error.stack);
+      return [];
+    }
+  }
+
+  /**
+   * Send a notification to all admin users
+   * @param title Notification title
+   * @param body Notification body
+   * @param data Additional data to include in the notification
+   * @returns Promise with the message IDs
+   */
+  async notifyAllAdmins(
+    title: string,
+    body: string,
+    data?: Record<string, string>
+  ) {
+    try {
+      // Get all admin FCM tokens
+      const adminTokens = await this.getAdminFcmTokens();
+      
+      if (adminTokens.length === 0) {
+        this.logger.warn('No admin tokens found for notification');
+        return null;
+      }
+      
+      // Send multicast notification to all admins
+      return this.sendMulticastNotification(
+        adminTokens,
+        {
+          title,
+          body,
+        },
+        data
+      );
+    } catch (error) {
+      this.logger.error(`Error notifying admins: ${error.message}`, error.stack);
+      return null;
+    }
   }
 }

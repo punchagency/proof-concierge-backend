@@ -6,7 +6,7 @@
   "private": true,
   "license": "UNLICENSED",
   "scripts": {
-    "oprebuild": "npx prisma migrate reset --force && npm run seed:production-admins",
+    "prebuild": "node skip-prebuild.js || (npx prisma migrate reset --force && npm run seed:production-admins)",
     "build": "nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
@@ -64,6 +64,7 @@
     "prisma": "^6.4.1",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
+    "socket.io": "^4.8.1",
     "typeorm": "^0.3.20",
     "ws": "^8.18.1"
   },
