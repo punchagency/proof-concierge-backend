@@ -8,6 +8,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Roles } from '../auth/roles.decorator';
 import { Public } from '../auth/public.decorator';
 import { GetUser } from '../auth/get-user.decorator';
+import { LogActivity } from '../logging/decorators/log-activity.decorator';
 
 @Controller({
   path: 'donor-queries',
@@ -19,6 +20,7 @@ export class DonorQueriesController {
 
   @Post()
   @Public()
+  @LogActivity('Created a new donor query')
   async create(@Body() createDonorQueryDto: CreateDonorQueryDto) {
     try {
       const query = await this.donorQueriesService.create(createDonorQueryDto);
@@ -39,6 +41,7 @@ export class DonorQueriesController {
 
   @Get()
   @Roles('SUPER_ADMIN', 'ADMIN')
+  @LogActivity('Viewed all donor queries')
   async findAll() {
     const queries = await this.donorQueriesService.findAll();
     return {
@@ -209,6 +212,7 @@ export class DonorQueriesController {
 
   @Patch(':id')
   @Roles('SUPER_ADMIN', 'ADMIN')
+  @LogActivity('Updated a donor query')
   async update(@Param('id', ParseIntPipe) id: number, @Body() updateDonorQueryDto: UpdateDonorQueryDto) {
     const query = await this.donorQueriesService.update(id, updateDonorQueryDto);
     return {
@@ -219,6 +223,7 @@ export class DonorQueriesController {
 
   @Delete(':id')
   @Roles('SUPER_ADMIN')
+  @LogActivity('Deleted a donor query')
   async remove(@Param('id', ParseIntPipe) id: number) {
     const result = await this.donorQueriesService.remove(id);
     return {
@@ -229,6 +234,7 @@ export class DonorQueriesController {
 
   @Post(':id/resolve')
   @Roles('SUPER_ADMIN', 'ADMIN')
+  @LogActivity('Resolved a donor query')
   async resolveQuery(
     @Param('id', ParseIntPipe) id: number,
     @GetUser() user: User,
@@ -242,6 +248,7 @@ export class DonorQueriesController {
 
   @Post(':id/pending-reply')
   @Roles('SUPER_ADMIN', 'ADMIN')
+  @LogActivity('Marked a donor query as pending reply')
   async setPendingReply(
     @Param('id', ParseIntPipe) id: number,
   ) {
@@ -254,6 +261,7 @@ export class DonorQueriesController {
 
   @Post(':id/in-progress')
   @Roles('SUPER_ADMIN', 'ADMIN')
+  @LogActivity('Marked a donor query as in progress')
   async setInProgress(
     @Param('id', ParseIntPipe) id: number,
   ) {
@@ -266,6 +274,7 @@ export class DonorQueriesController {
 
   @Post(':id/transfer')
   @Roles('SUPER_ADMIN', 'ADMIN')
+  @LogActivity('Transferred a donor query to another admin')
   async transferQuery(
     @Param('id', ParseIntPipe) id: number,
     @Body('transferredToUserId') transferredToUserId: number,
@@ -281,6 +290,7 @@ export class DonorQueriesController {
 
   @Patch(':id/accept')
   @Roles('SUPER_ADMIN', 'ADMIN')
+  @LogActivity('Accepted a donor query assignment')
   async acceptQuery(
     @Param('id', ParseIntPipe) id: number,
     @Request() req: any,
@@ -315,6 +325,7 @@ export class DonorQueriesController {
 
   @Post(':id/send-reminder')
   @Roles('SUPER_ADMIN', 'ADMIN')
+  @LogActivity('Sent a reminder for a donor query')
   async sendReminder(
     @Param('id', ParseIntPipe) id: number,
     @Body('message') message?: string,
@@ -342,6 +353,7 @@ export class DonorQueriesController {
 
   @Post(':id/donor-close')
   @Public()
+  @LogActivity('Donor closed their query')
   async donorCloseQuery(
     @Param('id', ParseIntPipe) id: number,
     @Body('donorId') donorId: string,
