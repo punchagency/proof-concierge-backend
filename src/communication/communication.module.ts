@@ -1,8 +1,8 @@
 import { Module } from '@nestjs/common';
 import { HttpModule } from '@nestjs/axios';
 import { ConfigModule } from '@nestjs/config';
-import { NotificationsModule } from 'src/notifications/notifications.module';
-import { PrismaModule } from 'src/database/prisma.module';
+import { NotificationsModule } from '../notifications/notifications.module';
+import { PrismaModule } from '../database/prisma.module';
 
 import { MessagesService } from './services/messages.service';
 import { CallsService } from './services/calls.service';
