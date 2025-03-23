@@ -30,7 +30,7 @@ The Proof Concierge Backend is built using NestJS, a progressive Node.js framewo
 - **DTOs**: Define data transfer objects for request validation
 - **Entities**: Represent database models
 
-The system uses PostgreSQL for data persistence, with Prisma as the ORM. For real-time communication, it employs Socket.IO through NestJS's WebSocketGateway. Video call functionality is integrated with Daily.co, and Firebase is used for push notifications.
+The system uses PostgreSQL for data persistence, with Prisma as the ORM. For real-time communication, it employs Socket.IO through NestJS's WebSocketGateway. Video call functionality is integrated with VideoSDK, and Firebase is used for push notifications.
 
 ## Core Components
 
@@ -68,7 +68,7 @@ Enables communication between donors and admin users through a structured messag
 
 ### Communication System
 
-Manages video and audio calls between donors and admin users using Daily.co as the underlying platform.
+Manages video and audio calls between donors and admin users using VideoSDK as the underlying platform.
 
 **Key Features**:
 - Initiation of video/audio calls
@@ -139,7 +139,7 @@ Represents a video or audio call session.
 - `id`: Unique identifier
 - `queryId`: Related donor query
 - `adminId`: Admin who initiated the call
-- `roomName`: Daily.co room name
+- `roomName`: VideoSDK room ID
 - `mode`: Call mode (VIDEO, AUDIO, SCREEN)
 - `status`: Call status (CREATED, STARTED, ENDED)
 - `startedAt`: When the call started
@@ -178,7 +178,7 @@ Throughout this flow, real-time WebSocket notifications keep both sides informed
 1. **Request**: Donor requests a call via `POST /communication/call/:queryId/request`
 2. **Notification**: Admin receives real-time notification of call request
 3. **Acceptance**: Admin accepts request via `POST /communication/call/:queryId/accept-request`
-4. **Room Creation**: System creates Daily.co room and generates tokens
+4. **Room Creation**: System creates VideoSDK room and generates tokens
 5. **Call Initiation**: Both parties join the call using the provided tokens
 6. **Status Updates**: Call status changes (CREATED → STARTED → ENDED) via status update endpoint
 7. **Termination**: Call ends with `POST /communication/call/:roomName/end`
@@ -212,7 +212,7 @@ The system exposes several categories of endpoints:
 
 ## Integration with External Services
 
-### Daily.co
+### VideoSDK
 
 Used for video and audio call functionality, integrated through:
 - Room creation for each call session

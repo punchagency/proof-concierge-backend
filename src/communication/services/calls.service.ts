@@ -8,12 +8,14 @@ import { CallMode, CallStatus, MessageType, Prisma, CallSession } from '@prisma/
 import { MessagesService } from './messages.service';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { Cron, CronExpression } from '@nestjs/schedule';
+import * as jwt from 'jsonwebtoken';
+import { v4 as uuidv4 } from 'uuid';
 
 @Injectable()
 export class CallsService implements OnModuleInit {
   private readonly logger = new Logger(CallsService.name);
   private apiKey!: string;
-  private domain!: string;
+  private secretKey!: string;
   private isInitialized = false;
 
   constructor(
@@ -26,30 +28,30 @@ export class CallsService implements OnModuleInit {
 
   onModuleInit() {
     try {
-      const apiKey = this.configService.get<string>('DAILY_API_KEY');
-      const domain = this.configService.get<string>('DAILY_DOMAIN');
+      const apiKey = this.configService.get<string>('VIDEOSDK_API_KEY');
+      const secretKey = this.configService.get<string>('VIDEOSDK_SECRET_KEY');
 
       if (!apiKey) {
-        this.logger.error('DAILY_API_KEY environment variable is not set');
+        this.logger.error('VIDEOSDK_API_KEY environment variable is not set');
         return;
       }
-      if (!domain) {
-        this.logger.error('DAILY_DOMAIN environment variable is not set');
+      if (!secretKey) {
+        this.logger.error('VIDEOSDK_SECRET_KEY environment variable is not set');
         return;
       }
 
       this.apiKey = apiKey;
-      this.domain = domain;
+      this.secretKey = secretKey;
       this.isInitialized = true;
-      this.logger.log('Daily.co API initialized successfully');
+      this.logger.log('VideoSDK API initialized successfully');
     } catch (error) {
-      this.logger.error('Error initializing Daily.co API:', error);
+      this.logger.error('Error initializing VideoSDK API:', error);
     }
   }
 
   async startCall(queryId: number, adminId: number, mode: CallMode = CallMode.VIDEO) {
     if (!this.isInitialized) {
-      throw new Error('Daily.co API not initialized');
+      throw new Error('VideoSDK API not initialized');
     }
 
     console.log('queryId', queryId);
@@ -95,17 +97,17 @@ export class CallsService implements OnModuleInit {
         }
       }
 
-      // Create a room in Daily.co
-      const room = await this.createPrivateRoom({ mode: callMode });
+      // Create a room in VideoSDK
+      const roomName = await this.createRoom();
       
       // Generate tokens
-      const adminToken = await this.createMeetingToken(room.name, true, callMode);
-      const userToken = await this.createMeetingToken(room.name, false, callMode);
+      const adminToken = this.generateToken(roomName, true);
+      const userToken = this.generateToken(roomName, false);
 
       // Create call session in database with tokens
       const callSession = await this.prisma.callSession.create({
         data: {
-          roomName: room.name,
+          roomName: roomName,
           mode: callMode,
           status: CallStatus.CREATED,
           userToken: userToken,
@@ -149,7 +151,7 @@ export class CallsService implements OnModuleInit {
 
       return {
         callSession,
-        room,
+        room: { name: roomName },
         tokens: {
           admin: adminToken,
           user: userToken,
@@ -163,7 +165,7 @@ export class CallsService implements OnModuleInit {
 
   async endCall(roomName: string, adminId: number) {
     if (!this.isInitialized) {
-      throw new Error('Daily.co API not initialized');
+      throw new Error('VideoSDK API not initialized');
     }
 
     try {
@@ -189,7 +191,7 @@ export class CallsService implements OnModuleInit {
         callSessionId: callSession.id,
       });
 
-      // Delete the room in Daily.co
+      // Delete the room in VideoSDK
       await this.deleteRoom(roomName);
 
       return callSession;
@@ -227,91 +229,85 @@ export class CallsService implements OnModuleInit {
     return callSession;
   }
 
-  private async createPrivateRoom(options: {
-    expiryMinutes?: number;
-    customRoomName?: string;
-    mode?: CallMode;
-  } = {}) {
+  private async createRoom() {
     if (!this.isInitialized) {
-      throw new Error('Daily.co API not initialized');
+      throw new Error('VideoSDK API not initialized');
     }
 
     try {
-      const url = 'https://api.daily.co/v1/rooms';
-      const { expiryMinutes = 120, customRoomName, mode = CallMode.VIDEO } = options;
+      // Generate an access token
+      const token = this.generateManagementToken();
 
-      this.logger.log(`Creating private room with mode: ${mode}, expiryMinutes: ${expiryMinutes}`);
-
-      const roomConfig = {
-        properties: {
-          max_participants: 2,
-          enable_screenshare: true,
-          enable_chat: true,
-          start_video_off: mode === CallMode.AUDIO,
-          start_audio_off: false,
-          exp: Math.floor(Date.now() / 1000) + expiryMinutes * 60,
-        },
-        privacy: 'private',
-        name: customRoomName,
-      };
+      const url = 'https://api.videosdk.live/v2/rooms';
+      this.logger.log('Creating room...');
 
       const response = await lastValueFrom(
-        this.httpService.post(url, roomConfig, {
-          headers: { Authorization: `Bearer ${this.apiKey}` },
+        this.httpService.post(url, {}, {
+          headers: { Authorization: token },
         }),
       );
 
       if (!response?.data) {
-        throw new Error('No response received from Daily API');
+        throw new Error('No response received from VideoSDK API');
       }
 
-      this.logger.log(`Room created successfully: ${response.data.name}`);
-      return response.data;
+      this.logger.log(`Room created successfully: ${response.data.roomId}`);
+      return response.data.roomId;
     } catch (error) {
-      this.handleDailyApiError(error, 'Error creating private room');
+      this.handleVideoSDKApiError(error, 'Error creating room');
       throw error;
     }
   }
 
-  private async createMeetingToken(roomName: string, isAdmin: boolean = false, mode: CallMode = CallMode.VIDEO) {
-    if (!this.isInitialized) {
-      throw new Error('Daily.co API not initialized');
-    }
+  private generateToken(roomId: string, isAdmin: boolean = false) {
+    // Create token payload
+    const payload = {
+      apikey: this.apiKey,
+      permissions: [
+        'allow_join', // Allow to join the meeting
+        isAdmin ? 'allow_mod' : null, // If admin, allow moderation permissions
+      ].filter(Boolean),
+      roomId,
+      version: 2,
+    };
 
-    try {
-      const url = 'https://api.daily.co/v1/meeting-tokens';
-      this.logger.log(`Creating meeting token for room: ${roomName}, isAdmin: ${isAdmin}, mode: ${mode}`);
-
-      const tokenConfig = {
-        properties: {
-          room_name: roomName,
-          is_owner: isAdmin,
-          enable_screenshare: true,
-          start_video_off: mode === CallMode.AUDIO,
-          start_audio_off: false,
-          exp: Math.floor(Date.now() / 1000) + 120 * 60, // Token expires in 2 hours
-        },
-      };
-
-      const response = await lastValueFrom(
-        this.httpService.post(url, tokenConfig, {
-          headers: { Authorization: `Bearer ${this.apiKey}` },
-        }),
-      );
-
-      if (!response?.data) {
-        throw new Error('No response received from Daily API');
+    // Generate JWT token
+    const token = jwt.sign(
+      payload,
+      this.secretKey,
+      {
+        algorithm: 'HS256',
+        expiresIn: '2h', // Token expires in 2 hours
+        jwtid: uuidv4(),
       }
+    );
 
-      this.logger.log(`Meeting token created successfully for room: ${roomName}`);
-      return response.data.token as string;
-    } catch (error) {
-      this.logger.error(`Error creating meeting token for room: ${roomName}`, error);
-      throw error;
-    }
+    return token;
+  }
+  
+  private generateManagementToken() {
+    // Create token payload for management API
+    const payload = {
+      apikey: this.apiKey,
+      permissions: ['allow_join'],
+      version: 2,
+    };
+
+    // Generate JWT token
+    const token = jwt.sign(
+      payload,
+      this.secretKey,
+      {
+        algorithm: 'HS256',
+        expiresIn: '2h', // Token expires in 2 hours
+        jwtid: uuidv4(),
+      }
+    );
+
+    return token;
   }
 
-  private handleDailyApiError(error: any, context: string) {
+  private handleVideoSDKApiError(error: any, context: string) {
     if (error instanceof AxiosError) {
       const status = error.response?.status;
       const data = error.response?.data;
@@ -329,29 +325,22 @@ export class CallsService implements OnModuleInit {
 
   async deleteRoom(roomName: string) {
     if (!this.isInitialized) {
-      throw new Error('Daily.co API not initialized');
+      throw new Error('VideoSDK API not initialized');
     }
 
     try {
-      const url = `https://api.daily.co/v1/rooms/${roomName}`;
-      this.logger.log(`Deleting room: ${roomName}`);
-
-      await lastValueFrom(
-        this.httpService.delete(url, {
-          headers: { Authorization: `Bearer ${this.apiKey}` },
-        }),
-      );
-
-      this.logger.log(`Room deleted successfully: ${roomName}`);
+      // We don't need to delete rooms in VideoSDK as they automatically expire
+      // after 10 minutes of inactivity. This is kept for compatibility with existing code.
+      this.logger.log(`Room ${roomName} will be automatically expired by VideoSDK`);
     } catch (error) {
-      this.logger.error(`Error deleting room: ${roomName}`, error);
+      this.logger.error(`Error with room deletion: ${roomName}`, error);
       throw error;
     }
   }
 
-  // Get the Daily.co domain for constructing room URLs
+  // VideoSDK doesn't use domain like Daily.co, but keeping this method for compatibility
   getDomain(): string {
-    return this.domain;
+    return 'app.videosdk.live';
   }
 
   // Add the missing methods
@@ -814,7 +803,7 @@ export class CallsService implements OnModuleInit {
       const expiredCalls: typeof activeCalls = [];
 
       for (const call of activeCalls) {
-        // Call is created with a 2-hour expiry in Daily.co
+        // Call is created with a 2-hour expiry in VideoSDK
         const callCreationTime = call.createdAt.getTime();
         const callExpirationTime = callCreationTime + (120 * 60 * 1000); // 120 minutes in milliseconds
 
@@ -842,7 +831,7 @@ export class CallsService implements OnModuleInit {
             callSessionId: call.id,
           });
 
-          // Clean up room in Daily.co
+          // Clean up room in VideoSDK
           try {
             await this.deleteRoom(call.roomName);
           } catch (error) {
@@ -966,7 +955,7 @@ export class CallsService implements OnModuleInit {
           isFromAdmin: true,
         });
         
-        // Delete the room in Daily.co
+        // Delete the room in VideoSDK
         try {
           await this.deleteRoom(call.roomName);
         } catch (error) {

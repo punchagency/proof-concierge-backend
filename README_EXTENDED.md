@@ -2362,3 +2362,22 @@ Example error response:
   }
 }
 ```
+
+## Video Calls
+
+The application uses VideoSDK for video and audio calls between donors and admin users.
+
+### Environment Variables
+
+- `VIDEOSDK_API_KEY`: API key for VideoSDK video calls
+- `VIDEOSDK_SECRET_KEY`: Secret key for VideoSDK video calls
+
+### Room URLs
+
+The application constructs room URLs for VideoSDK meetings:
+
+```
+https://app.videosdk.live/meeting/${roomName}
+```
+
+These URLs can be used to join meetings directly via a browser.

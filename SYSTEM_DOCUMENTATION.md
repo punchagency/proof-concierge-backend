@@ -8,7 +8,7 @@ The Proof Concierge Backend is a comprehensive support ticketing system built us
 
 - **Support Ticketing System**: Create and manage donor queries (support tickets)
 - **Real-time Communication**: Chat messaging with WebSocket support for instant updates
-- **Video/Audio Calling**: Integrated with Daily.co for seamless video and audio communication
+- **Video/Audio Calling**: Integrated with VideoSDK for seamless video and audio communication
 - **Role-based Access Control**: Different permissions for donors and admin users
 - **Push Notifications**: Firebase Cloud Messaging integration for mobile notifications
 - **Health Monitoring**: Comprehensive health check endpoints for system status
@@ -22,7 +22,7 @@ The Proof Concierge Backend is a comprehensive support ticketing system built us
 - **Database**: PostgreSQL with Prisma ORM
 - **API**: RESTful API with versioning
 - **Real-time Communication**: WebSockets
-- **Video/Audio Calls**: Daily.co API integration
+- **Video/Audio Calls**: VideoSDK integration
 - **Push Notifications**: Firebase Cloud Messaging (FCM)
 - **Authentication**: JWT-based authentication
 - **Deployment**: Compatible with various cloud platforms (Heroku, AWS, etc.)
@@ -34,7 +34,7 @@ The system is built as a modular NestJS application with the following key modul
 1. **Auth Module**: Handles authentication, authorization, and user management
 2. **Donor Queries Module**: Core module for managing support tickets
 3. **Messages Module**: Handles chat and system messages
-4. **Communication Module**: Manages video/audio calls and integrates with Daily.co
+4. **Communication Module**: Manages video/audio calls and integrates with VideoSDK
 5. **Notifications Module**: Handles push notifications via FCM
 6. **Health Module**: Provides system health monitoring endpoints
 7. **Database Module**: Manages database connections and operations via Prisma
@@ -64,7 +64,7 @@ The database uses a relational model with the following key entities:
 3. **Call Flow**:
    - Donors can request calls
    - Admins accept/reject call requests
-   - Call sessions are created using Daily.co API
+   - Call sessions are created using VideoSDK
    - Both parties receive tokens to join the call
 
 4. **Query Resolution Flow**:
@@ -200,15 +200,14 @@ For mobile clients, the system uses Firebase Cloud Messaging:
 
 ## 6. Video/Audio Call System
 
-### 6.1 Daily.co Integration
+### 6.1 VideoSDK Integration
 
-The system integrates with Daily.co for video/audio calls:
+The system integrates with VideoSDK for video/audio calls:
 
-1. Admin initiates a call or accepts a call request
-2. The system creates a room on Daily.co
-3. Tokens are generated for both the admin and the donor
-4. A call session record is created and associated with the query
-5. Both parties can join the call using their tokens
+1. Admin initiates a call or accepts a donor's call request
+2. The system creates a room on VideoSDK
+3. Generates secure tokens for both the admin and donor
+4. Participants join the call using these tokens
 
 ### 6.2 Call Request Flow
 
@@ -372,9 +371,9 @@ JWT_SECRET=your_jwt_secret_here
 SUPER_ADMIN_PASSWORD=your_secure_super_admin_password
 ADMIN_PASSWORD=your_secure_admin_password
 
-# Video Calls (Daily.co)
-DAILY_API_KEY=your_daily_api_key
-DAILY_DOMAIN=your_daily_domain
+# Video Calls (VideoSDK)
+VIDEOSDK_API_KEY=your_videosdk_api_key
+VIDEOSDK_SECRET_KEY=your_videosdk_secret_key
 
 # Firebase Cloud Messaging
 FIREBASE_PROJECT_ID=your_firebase_project_id
@@ -502,7 +501,7 @@ Health check endpoints provide system status:
    - Ensure user credentials are valid
 
 3. **Video Call Issues**:
-   - Verify Daily.co API key and domain
+   - Verify VIDEOSDK_API_KEY and VIDEOSDK_SECRET_KEY
    - Check network connectivity
    - Ensure browser supports WebRTC
 
