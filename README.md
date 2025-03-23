@@ -11,6 +11,12 @@ Proof Concierge Backend is a NestJS-based backend service designed to power the 
   - Tickets include essential details, such as donor information, query mode, device info, and more.
   - Chat messages and call requests can be attached to a query for real-time communication.
 
+- **Video & Audio Calls:**
+  - Integrated with VideoSDK for real-time communication between donors and admins.
+  - Support for video calls, audio-only calls, and screen sharing.
+  - Call request system with notification support.
+  - See [VideoSDK Documentation](./VIDEOSDK_DOCUMENTATION.md) for detailed information.
+
 - **Public Endpoints:**
   - **POST `/donor-queries`**: Create a new support ticket. (Public, no authentication required)
   - **GET `/donor-queries/:id`**: Retrieve details of a support ticket by its ID (public).
@@ -40,6 +46,7 @@ Proof Concierge Backend is a NestJS-based backend service designed to power the 
 - **Language:** TypeScript
 - **Database:** Prisma ORM (connecting to a relational database, e.g., PostgreSQL)
 - **Authentication:** JWT based (using `JwtAuthGuard` and custom decorators)
+- **Video/Audio Calls:** VideoSDK for real-time communication
 
 ## Installation & Setup
 
@@ -60,7 +67,12 @@ Proof Concierge Backend is a NestJS-based backend service designed to power the 
    DATABASE_URL=postgresql://user:password@localhost:5432/database
    JWT_SECRET=your_jwt_secret
    PORT=3000
+   
+   # VideoSDK Integration
+   VIDEOSDK_API_KEY=your_videosdk_api_key
+   VIDEOSDK_SECRET_KEY=your_videosdk_secret_key
    ```
+   For more details on the VideoSDK integration, see [VIDEOSDK_DOCUMENTATION.md](./VIDEOSDK_DOCUMENTATION.md).
 
 4. **Database Migrations:**
    This project uses Prisma for ORM. If you have made any changes to the Prisma schema, run:
@@ -107,6 +119,29 @@ Proof Concierge Backend is a NestJS-based backend service designed to power the 
 
 - **PATCH `/donor-queries/:id/accept`**: Endpoint for a user to accept a donor query for resolution.
 
+### Call and Communication Endpoints
+
+- **POST `/api/v1/communication/call/:queryId`**: Start a video/audio call for a given query (admin only).
+
+- **POST `/api/v1/communication/call/:queryId/request`**: Request a call as a donor (public).
+
+- **POST `/api/v1/communication/call/:queryId/accept-request`**: Accept a pending call request (admin only).
+
+- **POST `/api/v1/communication/call/:roomName/end`**: End an ongoing call (admin only).
+
+- **GET `/api/v1/communication/call/calls/:queryId`**: Get all call details for a specific query.
+
+- **PUT `/api/v1/communication/call/:roomName/status`**: Update call status (e.g., when a user joins).
+
+## Code Structure
+
+- **src/**
+  - **auth/**: Authentication related logic, including JWT guards, public decorators, and role-based decorators.
+  - **database/**: Contains the Prisma service for database interactions.
+  - **donor-queries/**: Module handling donor queries (support tickets), including controllers, services, and DTOs.
+  - **communication/**: Services and controllers for chat messaging and video/audio calls via VideoSDK.
+  - **Other modules:** Additional modules serve other parts of the application as required.
+
 ## Authentication & Authorization
 
 - **JWT Authentication:**
@@ -115,14 +150,6 @@ Proof Concierge Backend is a NestJS-based backend service designed to power the 
 
 - **Role Guards:**
   - Certain endpoints require roles such as `SUPER_ADMIN` or `ADMIN` (verified using `RolesGuard` and `@Roles()` decorators).
-
-## Code Structure
-
-- **src/**
-  - **auth/**: Authentication related logic, including JWT guards, public decorators, and role-based decorators.
-  - **database/**: Contains the Prisma service for database interactions.
-  - **donor-queries/**: Module handling donor queries (support tickets), including controllers, services, and DTOs.
-  - **Other modules:** Additional modules serve other parts of the application as required.
 
 ## Testing & Development
 
@@ -143,4 +170,4 @@ For any inquiries or support:
 
 - [Your Name](mailto:your.email@example.com)
 
-Happy Coding! 
+Happy Coding!

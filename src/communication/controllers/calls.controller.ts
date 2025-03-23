@@ -81,7 +81,7 @@ export class CallsController {
       );
 
       // Log the room URL
-      const roomUrl = result.room.url || `https://${this.callsService.getDomain()}/${result.room.name}`;
+      const roomUrl = `https://${this.callsService.getDomain()}/${result.room.name}`;
       this.logger.log(`Call room created: ${roomUrl}`);
       
       // Send notification to the user if FCM token is available
@@ -310,7 +310,7 @@ export class CallsController {
       );
 
       // Log the room URL
-      const roomUrl = result.room.url || `https://${this.callsService.getDomain()}/${result.room.name}`;
+      const roomUrl = `https://${this.callsService.getDomain()}/${result.room.name}`;
       this.logger.log(`Call room created: ${roomUrl}`);
 
       return {
@@ -373,7 +373,7 @@ export class CallsController {
       );
 
       // Log the room URL
-      const roomUrl = result.room.url || `https://${this.callsService.getDomain()}/${result.room.name}`;
+      const roomUrl = `https://${this.callsService.getDomain()}/${result.room.name}`;
       this.logger.log(`Call room created: ${roomUrl}`);
 
       return {
