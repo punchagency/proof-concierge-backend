@@ -82,11 +82,11 @@ async function createRoom(token: string) {
 // Function to validate a room
 async function validateRoom(roomId: string, token: string) {
   try {
-    const url = `https://api.videosdk.live/v2/rooms/validate/${roomId}`;
+    const url = `https://api.videosdk.live/v2/rooms/${roomId}`;
     
     logger.log(`Validating room: ${roomId}`);
     
-    const response = await axios.post(url, {}, {
+    const response = await axios.get(url, {
       headers: { Authorization: token },
     });
     

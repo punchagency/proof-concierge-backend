@@ -698,7 +698,7 @@ curl --location --request GET 'http://localhost:3000/messages/query/123'
 **Notes:**
 - For call-related messages (with `messageType` of "CALL_STARTED"), the response includes a `callSession` object with all the details needed to join the call.
 - Users can use the `callSession.userToken` to authenticate and join the call.
-- The `callSession.roomName` can be used to construct the room URL: `https://{domain}.daily.co/{roomName}`
+- The `callSession.roomName` can be used to construct the room URL: `https://app.videosdk.live/meeting/room_xyz`
 - The `callSession.status` indicates if the call is active ("CREATED", "STARTED") or has ended ("ENDED").
 
 #### GET /messages/:queryId
@@ -771,7 +771,7 @@ curl --location --request GET 'http://localhost:3000/messages/123'
 **Notes:**
 - For call-related messages (with `messageType` of "CALL_STARTED"), the response includes a `callSession` object with all the details needed to join the call.
 - Users can use the `callSession.userToken` to authenticate and join the call.
-- The `callSession.roomName` can be used to construct the room URL: `https://{domain}.daily.co/{roomName}`
+- The `callSession.roomName` can be used to construct the room URL: `https://app.videosdk.live/meeting/room_xyz`
 - The `callSession.status` indicates if the call is active ("CREATED", "STARTED") or has ended ("ENDED").
 
 #### GET /messages/between/:userId1/:userId2
@@ -855,7 +855,7 @@ curl --location --request GET 'http://localhost:3000/messages/between/456/789'
         },
         "adminToken": "admin_token_here",
         "userToken": "user_token_here",
-        "roomUrl": "https://your-domain.daily.co/room_xyz"
+        "roomUrl": "https://app.videosdk.live/meeting/room_xyz"
     }
 }
 ```
@@ -864,7 +864,7 @@ curl --location --request GET 'http://localhost:3000/messages/between/456/789'
 1. When an admin starts a call, a message with `messageType: "CALL_STARTED"` is created and stored in the database.
 2. The user can retrieve this message through the `/messages/{queryId}` endpoint.
 3. The message includes a `callSession` object with all the details needed to join the call:
-   - `roomName`: Used to construct the room URL (`https://{domain}.daily.co/{roomName}`)
+   - `roomName`: Used to construct the room URL (`https://app.videosdk.live/meeting/room_xyz`)
    - `userToken`: Used to authenticate the user when joining the call
    - `mode`: Indicates if it's a video or audio call
    - `status`: Indicates if the call is active or has ended
@@ -894,7 +894,7 @@ curl --location --request GET 'http://localhost:3000/messages/between/456/789'
 ```json
 {
     "statusCode": 500,
-    "message": "Daily.co API not initialized"
+    "message": "VideoSDK API not initialized"
 }
 ```
 
@@ -1159,7 +1159,7 @@ curl --location --request POST 'http://localhost:3000/communication/call/123/acc
         },
         "room": {
             "name": "room_xyz",
-            "url": "https://your-domain.daily.co/room_xyz"
+            "url": "https://app.videosdk.live/meeting/room_xyz"
         },
         "tokens": {
             "admin": "admin_token_here",
@@ -1174,7 +1174,7 @@ curl --location --request POST 'http://localhost:3000/communication/call/123/acc
             "createdAt": "2024-03-20T12:00:00.000Z",
             "updatedAt": "2024-03-20T12:10:00.000Z"
         },
-        "roomUrl": "https://your-domain.daily.co/room_xyz"
+        "roomUrl": "https://app.videosdk.live/meeting/room_xyz"
     }
 }
 ```
@@ -1222,7 +1222,7 @@ curl --location --request POST 'http://localhost:3000/communication/call/123/acc
         },
         "room": {
             "name": "room_xyz",
-            "url": "https://your-domain.daily.co/room_xyz"
+            "url": "https://app.videosdk.live/meeting/room_xyz"
         },
         "tokens": {
             "admin": "admin_token_here",
@@ -1237,7 +1237,7 @@ curl --location --request POST 'http://localhost:3000/communication/call/123/acc
             "createdAt": "2024-03-20T12:00:00.000Z",
             "updatedAt": "2024-03-20T12:10:00.000Z"
         },
-        "roomUrl": "https://your-domain.daily.co/room_xyz"
+        "roomUrl": "https://app.videosdk.live/meeting/room_xyz"
     }
 }
 ```
@@ -2167,7 +2167,7 @@ curl --location --request DELETE 'http://localhost:3000/communication/call/room_
 ```
 
 **Notes:**
-- This endpoint deletes the room from the Daily.co API but does not update any call session records in the database
+- This endpoint deletes the room from the VideoSDK but does not update any call session records in the database
 - For proper call termination that updates database records, use the POST /communication/call/:roomName/end endpoint instead
 - This endpoint is primarily used for administrative cleanup
 
@@ -2266,7 +2266,7 @@ If you need these functionalities, please check the latest API documentation or 
 - `id`: Unique identifier (auto-incremented)
 - `queryId`: ID of the associated donor query
 - `adminId`: ID of the admin who initiated the call
-- `roomName`: Daily.co room name (unique)
+- `roomName`: VideoSDK room ID (unique)
 - `mode`: Call mode (VIDEO, AUDIO, SCREEN)
 - `status`: Call status (CREATED, STARTED, ENDED)
 - `startedAt`: When the call started (optional)
@@ -2324,9 +2324,8 @@ The following environment variables are required:
 
 - `DATABASE_URL`: PostgreSQL connection string
 - `JWT_SECRET`: Secret for JWT token generation
-- `DAILY_API_KEY`: API key for Daily.co video calls
-- `DAILY_DOMAIN`: Domain for Daily.co video calls
-- `FCM_SERVER_KEY`: Firebase Cloud Messaging server key for notifications
+- `VIDEOSDK_API_KEY`: API key for VideoSDK video calls
+- `VIDEOSDK_SECRET_KEY`: Secret key for VideoSDK video calls
 
 Optional environment variables:
 
