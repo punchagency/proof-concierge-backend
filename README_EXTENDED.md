@@ -8,6 +8,11 @@ This document provides a detailed guide to all the API endpoints in the Proof Co
 
 - [Overview](#overview)
 - [Authentication & Authorization](#authentication--authorization)
+- [Real-time Notifications System](#real-time-notifications-system)
+  - [WebSocket Notifications](#websocket-notifications)
+  - [Firebase Cloud Messaging (FCM)](#firebase-cloud-messaging-fcm)
+  - [Integration Points](#integration-points)
+  - [Benefits](#benefits)
 - [Public Endpoints](#public-endpoints)
   - [Authentication](#authentication)
     - [POST /auth/login](#post-authlogin)
@@ -15,10 +20,13 @@ This document provides a detailed guide to all the API endpoints in the Proof Co
     - [GET /health](#get-health)
     - [GET /health/ping](#get-healthping)
     - [GET /health/advanced](#get-healthadvanced)
+    - [GET /health/advanced/detailed](#get-healthadvanceddetailed)
   - [Donor Queries](#donor-queries)
     - [POST /donor-queries](#post-donor-queries)
     - [GET /donor-queries/:id](#get-donor-queriesid)
     - [GET /donor-queries/user](#get-donor-queriesuser)
+    - [GET /donor-queries/user/:email](#get-donor-queriesuseremailid)
+    - [GET /donor-queries/donor/:donorId](#get-donor-queriesdonordonorid)
     - [GET /donor-queries/general](#get-donor-queriesgeneral)
     - [POST /donor-queries/:id/donor-close](#post-donor-queriesiddonor-close)
   - [Messages](#messages)
@@ -28,17 +36,22 @@ This document provides a detailed guide to all the API endpoints in the Proof Co
     - [GET /messages/:queryId](#get-messagesqueryid)
     - [GET /messages/between/:userId1/:userId2](#get-messagesbetweenuserid1userid2)
   - [Communication](#communication)
-    - [POST /communication/call/:queryId](#post-communicationcallqueryid)
     - [POST /communication/call/:roomName/end](#post-communicationcallroomnameend)
     - [PUT /communication/call/:roomName/status](#put-communicationcallroomnamestatus)
     - [GET /communication/calls/:queryId](#get-communicationcallsqueryid)
     - [POST /communication/call/:queryId/request](#post-communicationcallqueryidrequest)
     - [GET /communication/call/:queryId/requests](#get-communicationcallqueryidrequests)
-    - [POST /communication/call/:queryId/accept-request/:requestId](#post-communicationcallqueryidaccept-requestrequestid)
     - [POST /communication/call/:queryId/accept-request](#post-communicationcallqueryidaccept-request)
+    - [POST /communication/call/:queryId/accept-request/:requestId](#post-communicationcallqueryidaccept-requestrequestid)
     - [POST /communication/call/:queryId/reject-request/:requestId](#post-communicationcallqueryidreject-requestrequestid)
 - [Protected Endpoints (Admin/Support Staff)](#protected-endpoints-adminsupport-staff)
   - [User Management](#user-management)
+    - [GET /users/me](#get-usersme)
+    - [GET /users](#get-users)
+    - [GET /users/:id](#get-usersid)
+    - [POST /users](#post-users)
+    - [PUT /users/:id](#put-usersid)
+    - [DELETE /users/:id](#delete-usersid)
     - [PUT /users/me/fcm-token](#put-usersmefcm-token)
     - [PUT /users/me/profile](#put-usersmeprofile)
     - [PUT /users/me/password](#put-usersmepassword)
@@ -50,9 +63,13 @@ This document provides a detailed guide to all the API endpoints in the Proof Co
     - [GET /donor-queries](#get-donor-queries)
     - [GET /donor-queries/admin/:id](#get-donor-queriesadminid)
     - [GET /donor-queries/in-progress](#get-donor-queriesin-progress)
+    - [GET /donor-queries/pending-reply](#get-donor-queriespending-reply)
     - [GET /donor-queries/resolved](#get-donor-queriesresolved)
     - [GET /donor-queries/transferred](#get-donor-queriestransferred)
+    - [GET /donor-queries/filtered/statuses](#get-donor-queriesfilteredstatuses)
     - [PATCH /donor-queries/:id](#patch-donor-queriesid)
+    - [POST /donor-queries/:id/pending-reply](#post-donor-queriesidpending-reply)
+    - [POST /donor-queries/:id/in-progress](#post-donor-queriesidprogress)
     - [PATCH /donor-queries/:id/resolve](#patch-donor-queriesidresolve)
     - [PATCH /donor-queries/:id/transfer](#patch-donor-queriesidtransfer)
     - [POST /donor-queries/:id/send-reminder](#post-donor-queriesidsend-reminder)
@@ -60,8 +77,6 @@ This document provides a detailed guide to all the API endpoints in the Proof Co
     - [PATCH /donor-queries/:id/accept](#patch-donor-queriesidaccept)
   - [Communication Management](#communication-management)
     - [DELETE /communication/call/:roomName](#delete-communicationcallroomname)
-    - [DELETE /communication/rooms](#delete-communicationrooms)
-    - [GET /communication/rooms](#get-communicationrooms)
 
 ---
 
@@ -79,6 +94,145 @@ Proof Concierge Backend is a NestJS-based service that handles support tickets (
   - Marked with the `@Public()` decorator to allow access without a token.
 - **Role-based Access:**
   - Certain endpoints require roles such as `SUPER_ADMIN` or `ADMIN`; this is enforced via the `RolesGuard` and `@Roles()` decorators.
+
+## Real-time Notifications System
+
+The Proof Concierge Backend implements a robust real-time notification system that keeps clients instantly informed about changes without polling. This is achieved through a combination of WebSockets and Firebase Cloud Messaging (FCM) for mobile push notifications.
+
+### WebSocket Notifications
+
+The system uses Socket.IO (integrated with NestJS's `WebSocketGateway`) to provide real-time updates:
+
+1. **Connection & Authentication**:
+   - Clients connect to the WebSocket server at the `/notifications` namespace
+   - Authentication is performed using the same JWT tokens used for REST API authentication
+   - Unauthenticated clients are immediately disconnected
+   
+2. **Room-based Subscriptions**:
+   - Clients are automatically joined to rooms based on their identity:
+     - Admins join an "admins" room (`socket.join('admins')`)
+     - All users join personal rooms (`socket.join('user-{userId}')`)
+   - Clients can manually join query-specific rooms via the `joinQueryRoom` message
+   - This room-based approach ensures notifications are only sent to relevant clients
+
+3. **Notification Events**:
+   The system emits various event types that clients can listen for:
+
+   | Event | Description | Payload Example |
+   |-------|-------------|-----------------|
+   | `queryStatusChanged` | When query status changes | `{ queryId: 123, status: 'RESOLVED', changedBy: 'Admin Name' }` |
+   | `newQuery` | When a new query is created | `{ queryId: 123, donor: 'john.doe@example.com' }` |
+   | `newMessage` | When a new message is added | `{ queryId: 123, messageId: 456, content: '...' }` |
+   | `queryTransferred` | When query is transferred | `{ queryId: 123, fromUserId: 456, toUserId: 789 }` |
+   | `queryAssigned` | When query is assigned | `{ queryId: 123, userId: 456 }` |
+   | `callRequested` | When a call is requested | `{ queryId: 123, requestId: 789, mode: 'VIDEO' }` |
+   | `callStatusChanged` | When call status changes | `{ queryId: 123, callId: 456, status: 'STARTED' }` |
+
+4. **Client Usage Example**:
+   ```javascript
+   // Connect to notifications namespace with authentication
+   const socket = io('https://your-api-url/notifications', {
+     auth: {
+       token: 'your-jwt-token'
+     }
+   });
+   
+   // Listen for connection events
+   socket.on('connect', () => {
+     console.log('Connected to notification system');
+     
+     // Join a specific query room
+     socket.emit('joinQueryRoom', { queryId: 123 }, (response) => {
+       console.log('Join response:', response);
+     });
+   });
+   
+   // Listen for various notification types
+   socket.on('newMessage', (data) => {
+     console.log('New message received:', data);
+     // Update UI accordingly
+   });
+   
+   socket.on('queryStatusChanged', (data) => {
+     console.log('Query status changed:', data);
+     // Update UI accordingly
+   });
+   
+   // Clean up when done
+   socket.on('disconnect', () => {
+     console.log('Disconnected from notification system');
+   });
+   ```
+
+### Firebase Cloud Messaging (FCM)
+
+For mobile clients, the system implements push notifications using Firebase Cloud Messaging:
+
+1. **FCM Token Management**:
+   - Mobile clients register their FCM tokens using the `PUT /users/me/fcm-token` endpoint
+   - FCM tokens are stored in the user record and query records
+
+2. **Push Notification Types**:
+   The system sends various types of push notifications:
+   - Query status changes
+   - New messages
+   - Call requests and status updates
+   - Assignment and transfer notifications
+
+3. **Implementation Details**:
+   - Notifications include both visual notification content and data payload
+   - Android notifications use high priority and specific channels
+   - The payload includes all information needed to navigate to the relevant screen
+
+4. **Example FCM Payload**:
+   ```json
+   {
+     "notification": {
+       "title": "New Message",
+       "body": "You've received a new message for query #123"
+     },
+     "data": {
+       "type": "new_message",
+       "queryId": "123",
+       "messageId": "456",
+       "timestamp": "2023-10-10T12:00:00.000Z"
+     },
+     "android": {
+       "priority": "high",
+       "notification": {
+         "channelId": "messages"
+       }
+     }
+   }
+   ```
+
+### Integration Points
+
+The notification system is integrated throughout the application:
+
+1. **Donor Queries**:
+   - Status changes (resolve, transfer, accept)
+   - New query creation
+   - Assignment changes
+
+2. **Messaging**:
+   - New messages (chat messages, system messages)
+   - Message status updates
+
+3. **Calls/Communication**:
+   - Call requests
+   - Call status changes (started, ended)
+   - Call acceptance/rejection
+
+### Benefits
+
+This real-time notification system provides several key benefits:
+
+1. **Immediate Updates**: Users see changes instantly without refreshing or polling
+2. **Reduced Server Load**: Eliminates the need for frequent polling
+3. **Mobile Awareness**: Push notifications keep mobile users informed even when the app is in the background
+4. **Targeted Delivery**: Room-based approach ensures users only receive relevant notifications
+5. **Cross-Platform**: Works on web, mobile, and any platform supporting WebSockets or FCM
 
 ---
 
@@ -272,6 +426,60 @@ curl --location --request GET 'http://localhost:3000/health/advanced'
 - It includes information about the environment, version, and uptime.
 - It also provides detailed information about each component of the system.
 
+#### GET /health/advanced/detailed
+
+**Purpose:** Get detailed health information about the system, including environment variables and configuration.
+
+**Request:**
+- **Method:** GET
+- **URL:** `/health/advanced/detailed`
+
+**cURL Example:**
+```bash
+curl --location --request GET 'http://localhost:3000/health/advanced/detailed'
+```
+
+**Response:**
+```json
+{
+  "status": "ok",
+  "environment": "development",
+  "version": "1.0.0",
+  "uptime": 3600,
+  "memory": {
+    "rss": "50MB",
+    "heapTotal": "25MB",
+    "heapUsed": "20MB",
+    "external": "5MB"
+  },
+  "process": {
+    "pid": 12345,
+    "platform": "darwin",
+    "arch": "x64",
+    "nodeVersion": "18.12.1",
+    "cpuUsage": "2%"
+  },
+  "database": {
+    "status": "ok",
+    "type": "postgres",
+    "version": "14.5",
+    "connections": 5,
+    "maxConnections": 20
+  },
+  "config": {
+    "port": 3000,
+    "logLevel": "info",
+    "environment": "development"
+  }
+}
+```
+
+**Notes:**
+- This endpoint provides extremely detailed health information about the system.
+- It includes memory usage, process information, database details, and configuration.
+- This is typically used for debugging and monitoring purposes.
+- Some sensitive information may be redacted in production environments.
+
 ### Donor Queries
 
 #### POST /donor-queries
@@ -417,6 +625,100 @@ curl --location --request GET 'http://localhost:3000/donor-queries/user?donorId=
 ]
 ```
 
+#### GET /donor-queries/user/:email
+
+**Purpose:** Retrieve all donor queries associated with a specific donor email. This ties the query to the donor email supplied.
+
+**Request:**
+
+- **Method:** GET
+- **URL:** `/donor-queries/user/{email}`
+- **Query Parameter:** `email` (string)
+
+**Sample Request:**
+
+`GET /donor-queries/user/john.doe@example.com`
+
+**cURL Example:**
+
+```bash
+curl --location --request GET 'http://localhost:3000/donor-queries/user/john.doe@example.com'
+```
+
+**Response:**
+
+```json
+[
+  {
+    "id": 123,
+    "sid": "session123",
+    "donor": "john.doe@example.com",
+    "donorId": "donor_001",
+    "test": "unit-test",
+    "stage": "initial",
+    "queryMode": "EMAIL",
+    "device": "web",
+    "status": "IN_PROGRESS",
+    "messages": [
+      // Array of chat messages
+    ],
+    "callRequests": [
+      // Array of call request objects
+    ],
+    "createdAt": "2023-10-10T12:00:00.000Z",
+    "updatedAt": "2023-10-10T12:00:00.000Z"
+  }
+  // ... Additional queries if applicable
+]
+```
+
+#### GET /donor-queries/donor/:donorId
+
+**Purpose:** Retrieve all donor queries associated with a specific donor ID. This ties the query to the donor ID supplied.
+
+**Request:**
+
+- **Method:** GET
+- **URL:** `/donor-queries/donor/{donorId}`
+- **Query Parameter:** `donorId` (string)
+
+**Sample Request:**
+
+`GET /donor-queries/donor/donor_001`
+
+**cURL Example:**
+
+```bash
+curl --location --request GET 'http://localhost:3000/donor-queries/donor/donor_001'
+```
+
+**Response:**
+
+```json
+[
+  {
+    "id": 123,
+    "sid": "session123",
+    "donor": "john.doe@example.com",
+    "donorId": "donor_001",
+    "test": "unit-test",
+    "stage": "initial",
+    "queryMode": "EMAIL",
+    "device": "web",
+    "status": "IN_PROGRESS",
+    "messages": [
+      // Array of chat messages
+    ],
+    "callRequests": [
+      // Array of call request objects
+    ],
+    "createdAt": "2023-10-10T12:00:00.000Z",
+    "updatedAt": "2023-10-10T12:00:00.000Z"
+  }
+  // ... Additional queries if applicable
+]
+```
+
 #### GET /donor-queries/general
 
 **Purpose:** Retrieve donor queries that are in the "IN_PROGRESS" status.
@@ -526,7 +828,6 @@ curl --location --request POST 'http://localhost:3000/donor-queries/123/donor-cl
   "message": "Donor ID is required"
 }
 ```
-
 ```json
 {
   "status": 400,
@@ -821,90 +1122,6 @@ curl --location --request GET 'http://localhost:3000/messages/between/456/789'
 
 ### Communication
 
-#### POST /communication/call/:queryId
-
-**Purpose:** Start a new call session for a specific donor query.
-
-**Request:**
-- **Method:** POST
-- **URL:** `/communication/call/{queryId}`
-- **Headers:** Requires JWT Authentication and Admin Role
-- **Body:**
-```json
-{
-    "mode": "VIDEO" // or "AUDIO"
-}
-```
-
-**Response:**
-```json
-{
-    "success": true,
-    "message": "VIDEO call initiated",
-    "data": {
-        "callSession": {
-            "id": 1,
-            "queryId": 123,
-            "adminId": 456,
-            "roomName": "room_xyz",
-            "mode": "VIDEO",
-            "status": "CREATED",
-            "userToken": "user_token_here",
-            "adminToken": "admin_token_here",
-            "createdAt": "2024-03-20T12:00:00.000Z"
-        },
-        "adminToken": "admin_token_here",
-        "userToken": "user_token_here",
-        "roomUrl": "https://your-domain.daily.co/room_xyz"
-    }
-}
-```
-
-**How Users Join Calls:**
-1. When an admin starts a call, a message with `messageType: "CALL_STARTED"` is created and stored in the database.
-2. The user can retrieve this message through the `/messages/{queryId}` endpoint.
-3. The message includes a `callSession` object with all the details needed to join the call:
-   - `roomName`: Used to construct the room URL (`https://{domain}.daily.co/{roomName}`)
-   - `userToken`: Used to authenticate the user when joining the call
-   - `mode`: Indicates if it's a video or audio call
-   - `status`: Indicates if the call is active or has ended
-4. The user can then use this information to join the call without needing to make additional API requests.
-
-**Error Responses:**
-```json
-{
-    "statusCode": 500,
-    "message": "Donor query with ID 999 not found"
-}
-```
-```json
-{
-    "statusCode": 400,
-    "message": "Admin ID is required"
-}
-```
-
-```json
-{
-    "statusCode": 500,
-    "message": "Admin with ID 456 not found"
-}
-```
-
-```json
-{
-    "statusCode": 500,
-    "message": "Daily.co API not initialized"
-}
-```
-
-**Notes:**
-- The `mode` parameter must be one of the valid CallMode enum values: "VIDEO", "AUDIO", or "SCREEN"
-- If an invalid mode is provided, it will default to "VIDEO"
-- The admin ID is required and must be a valid user ID
-- The admin must be authenticated with a valid JWT token
-- The admin must have the ADMIN or SUPER_ADMIN role
-
 #### POST /communication/call/:roomName/end
 
 **Purpose:** End an active call session.
@@ -1179,12 +1396,41 @@ curl --location --request POST 'http://localhost:3000/communication/call/123/acc
 }
 ```
 
+**Error Response (when an active call already exists):**
+```json
+{
+    "success": false,
+    "message": "There is already an active call for this query. You can join the existing call.",
+    "data": {
+        "existingCall": {
+            "id": 1,
+            "queryId": 123,
+            "adminId": 456,
+            "roomName": "room_xyz",
+            "mode": "VIDEO",
+            "status": "CREATED",
+            "createdAt": "2024-03-20T12:00:00.000Z",
+            "admin": {
+                "id": 456,
+                "name": "Admin Name",
+                "role": "ADMIN"
+            }
+        },
+        "roomUrl": "https://your-domain.daily.co/room_xyz"
+    }
+}
+```
+
 **Notes:**
-- When a call request is accepted:
-  1. The call request's status is updated to "ACCEPTED"
-  2. A new call session is created
-  3. **The original system message in the chat thread is updated** to show that it's been accepted, along with a join link
-  4. No additional system message is created for the call start
+- When no specific requestId is provided, the system will accept the latest pending call request for the query
+- The message formatting of the accepted call will include:
+  - The original call request message
+  - Text showing which admin accepted the call (with ✅ emoji)
+  - A formatted markdown link for joining the call
+  - The call mode (video/audio)
+- **Only one active call can exist for a query at a time**
+- If you try to start a call when one is already active, you'll receive the error response shown above with details about the existing call
+- This ensures that all participants join the same call session instead of creating multiple separate calls
 
 #### POST /communication/call/:queryId/accept-request
 
@@ -1312,6 +1558,230 @@ _Note: All protected endpoints require a valid JWT token along with appropriate 
 
 ### User Management
 
+#### GET /users/me
+
+**Purpose:** Retrieve the profile information for the authenticated admin user.
+
+**Request:**
+- **Method:** GET
+- **URL:** `/users/me`
+
+**cURL Example:**
+```bash
+curl --location --request GET 'http://localhost:3000/users/me' \
+--header 'Authorization: Bearer YOUR_TOKEN'
+```
+
+**Response:**
+```json
+{
+    "id": 123,
+    "username": "admin.user",
+    "name": "Admin User",
+    "email": "admin@example.com",
+    "role": "ADMIN",
+    "avatar": "/images/admin.jpg",
+    "isActive": true,
+    "fcmToken": "your_firebase_cloud_messaging_token",
+    "createdAt": "2024-03-20T12:00:00.000Z",
+    "updatedAt": "2024-03-20T12:00:00.000Z"
+}
+```
+
+#### GET /users
+
+**Purpose:** Retrieve a list of all users.
+
+**Request:**
+- **Method:** GET
+- **URL:** `/users`
+
+**cURL Example:**
+```bash
+curl --location --request GET 'http://localhost:3000/users' \
+--header 'Authorization: Bearer YOUR_TOKEN'
+```
+
+**Response:**
+```json
+[
+    {
+        "id": 123,
+        "username": "admin.user",
+        "name": "Admin User",
+        "email": "admin@example.com",
+        "role": "ADMIN",
+        "avatar": "/images/admin.jpg",
+        "isActive": true,
+        "fcmToken": "your_firebase_cloud_messaging_token",
+        "createdAt": "2024-03-20T12:00:00.000Z",
+        "updatedAt": "2024-03-20T12:00:00.000Z"
+    }
+    // ... Additional users if applicable
+]
+```
+
+#### GET /users/:id
+
+**Purpose:** Retrieve the profile information for a specific user by ID.
+
+**Request:**
+- **Method:** GET
+- **URL:** `/users/{id}`
+- **Parameter:** `id` (number, parsed via `ParseIntPipe`)
+
+**cURL Example:**
+```bash
+curl --location --request GET 'http://localhost:3000/users/123' \
+--header 'Authorization: Bearer YOUR_TOKEN'
+```
+
+**Response:**
+```json
+{
+    "id": 123,
+    "username": "admin.user",
+    "name": "Admin User",
+    "email": "admin@example.com",
+    "role": "ADMIN",
+    "avatar": "/images/admin.jpg",
+    "isActive": true,
+    "fcmToken": "your_firebase_cloud_messaging_token",
+    "createdAt": "2024-03-20T12:00:00.000Z",
+    "updatedAt": "2024-03-20T12:00:00.000Z"
+}
+```
+
+#### POST /users
+
+**Purpose:** Create a new user.
+
+**Request:**
+- **Method:** POST
+- **URL:** `/users`
+- **Body:**
+```json
+{
+    "username": "new_user",
+    "password": "password123",
+    "name": "New User",
+    "email": "new_user@example.com",
+    "role": "USER"
+}
+```
+
+**cURL Example:**
+```bash
+curl --location --request POST 'http://localhost:3000/users' \
+--header 'Authorization: Bearer YOUR_TOKEN' \
+--header 'Content-Type: application/json' \
+--data-raw '{
+    "username": "new_user",
+    "password": "password123",
+    "name": "New User",
+    "email": "new_user@example.com",
+    "role": "USER"
+}'
+```
+
+**Response:**
+```json
+{
+    "id": 124,
+    "username": "new_user",
+    "name": "New User",
+    "email": "new_user@example.com",
+    "role": "USER",
+    "avatar": null,
+    "isActive": true,
+    "fcmToken": null,
+    "createdAt": "2024-03-20T12:00:00.000Z",
+    "updatedAt": "2024-03-20T12:00:00.000Z"
+}
+```
+
+#### PUT /users/:id
+
+**Purpose:** Update the profile information for a specific user by ID.
+
+**Request:**
+- **Method:** PUT
+- **URL:** `/users/{id}`
+- **Headers:** Requires JWT Authentication and Admin Role
+- **Body:**
+```json
+{
+    "name": "Updated User Name",
+    "email": "updated_user@example.com",
+    "avatar": "https://example.com/path/to/profile-image.jpg"
+}
+```
+
+**cURL Example:**
+```bash
+curl --location --request PUT 'http://localhost:3000/users/123' \
+--header 'Authorization: Bearer YOUR_TOKEN' \
+--header 'Content-Type: application/json' \
+--data-raw '{
+    "name": "Updated User Name",
+    "email": "updated_user@example.com",
+    "avatar": "https://example.com/path/to/profile-image.jpg"
+}'
+```
+
+**Response:**
+```json
+{
+    "id": 123,
+    "username": "admin.user",
+    "name": "Updated User Name",
+    "email": "updated_user@example.com",
+    "role": "ADMIN",
+    "avatar": "https://example.com/path/to/profile-image.jpg",
+    "isActive": true,
+    "fcmToken": "your_firebase_cloud_messaging_token",
+    "createdAt": "2024-03-20T12:00:00.000Z",
+    "updatedAt": "2024-03-20T12:30:00.000Z"
+}
+```
+
+**Notes:**
+- All fields in the request body are optional. Only the fields you want to update need to be included.
+- The `avatar` field should contain a URL to the profile image. This can be a URL to an image hosted on your own server or a third-party service.
+- The response includes the updated user profile with all fields.
+- For uploading a new avatar image directly, use the POST /users/me/avatar endpoint.
+
+#### DELETE /users/:id
+
+**Purpose:** Delete a specific user by ID.
+
+**Request:**
+- **Method:** DELETE
+- **URL:** `/users/{id}`
+- **Headers:** Requires JWT Authentication and Admin Role
+
+**cURL Example:**
+```bash
+curl --location --request DELETE 'http://localhost:3000/users/123' \
+--header 'Authorization: Bearer YOUR_TOKEN'
+```
+
+**Response:**
+```json
+{
+    "status": 200,
+    "message": "User with ID 123 deleted successfully"
+}
+```
+
+**Error Response:**
+```json
+{
+    "statusCode": 403,
+    "message": "You are not authorized to delete this user"
+}
+```
+
 #### PUT /users/me/fcm-token
 
 **Purpose:** Update the FCM (Firebase Cloud Messaging) token for the authenticated admin user to enable push notifications.
@@ -1404,6 +1874,77 @@ curl --location --request PUT 'http://localhost:3000/users/me/profile' \
 - The response includes the updated user profile with all fields.
 - For uploading a new avatar image directly, use the POST /users/me/avatar endpoint.
 
+#### PUT /users/me/password
+
+**Purpose:** Change the password for the authenticated admin user.
+
+**Request:**
+- **Method:** PUT
+- **URL:** `/users/me/password`
+- **Headers:** Requires JWT Authentication and Admin Role
+- **Body:**
+```json
+{
+    "currentPassword": "your_current_password",
+    "newPassword": "your_new_password"
+}
+```
+
+**cURL Example:**
+```bash
+curl --location --request PUT 'http://localhost:3000/users/me/password' \
+--header 'Authorization: Bearer YOUR_TOKEN' \
+--header 'Content-Type: application/json' \
+--data-raw '{
+    "currentPassword": "your_current_password",
+    "newPassword": "your_new_password"
+}'
+```
+
+**Response:**
+```json
+{
+    "id": 123,
+    "username": "admin.user",
+    "name": "Admin User",
+    "email": "admin@example.com",
+    "role": "ADMIN",
+    "avatar": "/images/admin.jpg",
+    "isActive": true,
+    "fcmToken": "your_firebase_cloud_messaging_token",
+    "createdAt": "2024-03-20T12:00:00.000Z",
+    "updatedAt": "2024-03-20T12:45:00.000Z"
+}
+```
+
+**Error Responses:**
+```json
+{
+    "statusCode": 401,
+    "message": "Current password is incorrect"
+}
+```
+
+```json
+{
+    "statusCode": 400,
+    "message": "New password must be different from the current password"
+}
+```
+
+```json
+{
+    "statusCode": 400,
+    "message": "Password must be at least 8 characters long"
+}
+```
+
+**Notes:**
+- Both `currentPassword` and `newPassword` fields are required.
+- The new password must be at least 8 characters long.
+- The new password must be different from the current password.
+- The current password must match the user's existing password.
+
 #### POST /users/me/avatar
 
 **Purpose:** Upload a new profile picture (avatar) for the authenticated admin user.
@@ -1478,77 +2019,6 @@ curl --location --request POST 'http://localhost:3000/users/me/avatar' \
 - Supported formats: JPEG, PNG, or GIF.
 - The maximum image size is 1MB.
 - The response includes the updated user profile with the new avatar as a base64 string.
-
-#### PUT /users/me/password
-
-**Purpose:** Change the password for the authenticated admin user.
-
-**Request:**
-- **Method:** PUT
-- **URL:** `/users/me/password`
-- **Headers:** Requires JWT Authentication and Admin Role
-- **Body:**
-```json
-{
-    "currentPassword": "your_current_password",
-    "newPassword": "your_new_password"
-}
-```
-
-**cURL Example:**
-```bash
-curl --location --request PUT 'http://localhost:3000/users/me/password' \
---header 'Authorization: Bearer YOUR_TOKEN' \
---header 'Content-Type: application/json' \
---data-raw '{
-    "currentPassword": "your_current_password",
-    "newPassword": "your_new_password"
-}'
-```
-
-**Response:**
-```json
-{
-    "id": 123,
-    "username": "admin.user",
-    "name": "Admin User",
-    "email": "admin@example.com",
-    "role": "ADMIN",
-    "avatar": "/images/admin.jpg",
-    "isActive": true,
-    "fcmToken": "your_firebase_cloud_messaging_token",
-    "createdAt": "2024-03-20T12:00:00.000Z",
-    "updatedAt": "2024-03-20T12:45:00.000Z"
-}
-```
-
-**Error Responses:**
-```json
-{
-    "statusCode": 401,
-    "message": "Current password is incorrect"
-}
-```
-
-```json
-{
-    "statusCode": 400,
-    "message": "New password must be different from the current password"
-}
-```
-
-```json
-{
-    "statusCode": 400,
-    "message": "Password must be at least 8 characters long"
-}
-```
-
-**Notes:**
-- Both `currentPassword` and `newPassword` fields are required.
-- The new password must be at least 8 characters long.
-- The new password must be different from the current password.
-- The current password must match the user's existing password.
 
 ### Messages Management
 
@@ -1818,6 +2288,46 @@ curl --location --request GET 'http://localhost:3000/donor-queries/in-progress' 
 ]
 ```
 
+#### GET /donor-queries/pending-reply
+
+**Purpose:** Retrieve donor queries that are pending reply.
+
+**Request:**
+- **Method:** GET
+- **URL:** `/donor-queries/pending-reply`
+
+**cURL Example:**
+```bash
+curl --location --request GET 'http://localhost:3000/donor-queries/pending-reply' \
+--header 'Authorization: Bearer YOUR_TOKEN'
+```
+
+**Response:**
+```json
+[
+    {
+        "id": 123,
+        "sid": "session123",
+        "donor": "john.doe@example.com",
+        "donorId": "donor_001",
+        "test": "unit-test",
+        "stage": "initial",
+        "queryMode": "EMAIL",
+        "device": "web",
+        "status": "PENDING_REPLY",
+        "messages": [
+            // Array of chat messages
+        ],
+        "callRequests": [
+            // Array of call request objects
+        ],
+        "createdAt": "2023-10-10T12:00:00.000Z",
+        "updatedAt": "2023-10-10T12:00:00.000Z"
+    }
+    // ... Additional queries if applicable
+]
+```
+
 #### GET /donor-queries/resolved
 
 **Purpose:** Retrieve donor queries that are in the "RESOLVED" status.
@@ -1898,6 +2408,48 @@ curl --location --request GET 'http://localhost:3000/donor-queries/transferred' 
 ]
 ```
 
+#### GET /donor-queries/filtered/statuses
+
+**Purpose:** Retrieve donor queries based on multiple statuses.
+
+**Request:**
+- **Method:** GET
+- **URL:** `/donor-queries/filtered/statuses`
+- **Query Parameters:**
+  - `statuses`: Comma-separated list of statuses (e.g., "IN_PROGRESS,RESOLVED")
+
+**cURL Example:**
+```bash
+curl --location --request GET 'http://localhost:3000/donor-queries/filtered/statuses?statuses=IN_PROGRESS,RESOLVED' \
+--header 'Authorization: Bearer YOUR_TOKEN'
+```
+
+**Response:**
+```json
+[
+    {
+        "id": 123,
+        "sid": "session123",
+        "donor": "john.doe@example.com",
+        "donorId": "donor_001",
+        "test": "unit-test",
+        "stage": "initial",
+        "queryMode": "EMAIL",
+        "device": "web",
+        "status": "IN_PROGRESS",
+        "messages": [
+            // Array of chat messages
+        ],
+        "callRequests": [
+            // Array of call request objects
+        ],
+        "createdAt": "2023-10-10T12:00:00.000Z",
+        "updatedAt": "2023-10-10T12:00:00.000Z"
+    }
+    // ... Additional queries if applicable
+]
+```
+
 #### PATCH /donor-queries/:id
 
 **Purpose:** Update a specific donor query.
@@ -1949,6 +2501,90 @@ curl --location --request PATCH 'http://localhost:3000/donor-queries/123' \
     "queryMode": "updated_EMAIL",
     "device": "updated_web",
     "status": "updated_IN_PROGRESS",
+    "createdAt": "2023-10-10T12:00:00.000Z",
+    "updatedAt": "2023-10-10T12:00:00.000Z"
+}
+```
+
+#### POST /donor-queries/:id/pending-reply
+
+**Purpose:** Add a pending reply to a specific donor query. This endpoint is restricted to the admin who is assigned to the query.
+
+**Request:**
+- **Method:** POST
+- **URL:** `/donor-queries/{id}/pending-reply`
+- **Headers:** Requires JWT Authentication and Admin Role
+- **Body:**
+```json
+{
+    "reply": "Pending reply text"
+}
+```
+
+**cURL Example:**
+```bash
+curl --location --request POST 'http://localhost:3000/donor-queries/123/pending-reply' \
+--header 'Authorization: Bearer YOUR_TOKEN' \
+--header 'Content-Type: application/json' \
+--data-raw '{
+    "reply": "Pending reply text"
+}'
+```
+
+**Response:**
+```json
+{
+    "id": 123,
+    "sid": "session123",
+    "donor": "john.doe@example.com",
+    "donorId": "donor_001",
+    "test": "unit-test",
+    "stage": "initial",
+    "queryMode": "EMAIL",
+    "device": "web",
+    "status": "PENDING_REPLY",
+    "createdAt": "2023-10-10T12:00:00.000Z",
+    "updatedAt": "2023-10-10T12:00:00.000Z"
+}
+```
+
+#### POST /donor-queries/:id/in-progress
+
+**Purpose:** Add a new message to a specific donor query. This endpoint is restricted to the admin who is assigned to the query.
+
+**Request:**
+- **Method:** POST
+- **URL:** `/donor-queries/{id}/in-progress`
+- **Headers:** Requires JWT Authentication and Admin Role
+- **Body:**
+```json
+{
+    "message": "New message text"
+}
+```
+
+**cURL Example:**
+```bash
+curl --location --request POST 'http://localhost:3000/donor-queries/123/in-progress' \
+--header 'Authorization: Bearer YOUR_TOKEN' \
+--header 'Content-Type: application/json' \
+--data-raw '{
+    "message": "New message text"
+}'
+```
+
+**Response:**
+```json
+{
+    "id": 123,
+    "sid": "session123",
+    "donor": "john.doe@example.com",
+    "donorId": "donor_001",
+    "test": "unit-test",
+    "stage": "initial",
+    "queryMode": "EMAIL",
+    "device": "web",
+    "status": "IN_PROGRESS",
     "createdAt": "2023-10-10T12:00:00.000Z",
     "updatedAt": "2023-10-10T12:00:00.000Z"
 }
@@ -2362,3 +2998,24 @@ Example error response:
   }
 }
 ```
+
+### Call System Constraints
+
+#### Prevention of Multiple Active Calls
+
+The system is designed to prevent multiple active calls for the same query at a time. This constraint ensures that:
+
+1. Only one call session (with status `CREATED` or `STARTED`) can exist for a query at any given time
+2. When attempting to start a new call or accept a call request for a query that already has an active call, the system:
+   - Will not create a new call
+   - Will return a specific error response with information about the existing active call
+   - Will provide the room URL and details needed to join the existing call
+
+This design decision supports the requirement that "for the call if one call is going on, second person should be able to join only, not able to create it." It ensures that all participants (donors and admins) join the same call session, preventing confusion and fragmentation of the communication.
+
+When an attempt is made to create a second call while one is active, the response will include:
+- `success: false` to indicate the operation didn't create a new call
+- A message explaining that a call already exists
+- Data containing the existing call's details, including the room URL needed to join
+
+This information allows the frontend to redirect users to join the existing call rather than attempting to create a new one.

@@ -80,6 +80,21 @@ export class CallsService implements OnModuleInit {
         throw new Error(`Admin with ID ${adminId} not found`);
       }
 
+      // Check if there are any active calls for this query
+      const existingActiveCalls = await this.prisma.callSession.findMany({
+        where: {
+          queryId,
+          status: {
+            in: [CallStatus.CREATED, CallStatus.STARTED]
+          }
+        }
+      });
+
+      if (existingActiveCalls.length > 0) {
+        this.logger.warn(`Cannot start a new call for query ${queryId} - ${existingActiveCalls.length} active call(s) already exist`);
+        throw new Error(`There is already an active call for this query. Please end the existing call before starting a new one.`);
+      }
+
       // Ensure mode is a valid CallMode enum value
       let callMode = mode;
       if (typeof mode === 'string') {

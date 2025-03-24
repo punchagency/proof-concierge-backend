@@ -21,7 +21,6 @@ import { CallMode, CallStatus, UserRole } from '@prisma/client';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { MessagesService } from '../services/messages.service';
 import { PrismaService } from '../../database/prisma.service';
-import { StartCallDto } from '../dto/start-call.dto';
 import { Public } from 'src/auth/public.decorator';
 import { CreateCallRequestDto } from '../dto/create-call-request.dto';
 import { MessageType } from '@prisma/client';
@@ -40,90 +39,6 @@ export class CallsController {
     private readonly messagesService: MessagesService,
     private readonly prisma: PrismaService,
   ) {}
-
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
-  @Post(':queryId')
-  async startCall(
-    @Param('queryId', ParseIntPipe) queryId: number,
-    @Body() startCallDto: StartCallDto,
-    @Request() req: any,
-  ) {
-    try {
-      // Debug: Log the request object to see its structure
-      this.logger.debug('Request object in startCall:', JSON.stringify({
-        user: req.user,
-        headers: req.headers,
-        params: req.params,
-        body: req.body
-      }, null, 2));
-      
-      // Ensure we're passing a valid CallMode enum value
-      let callMode = startCallDto.mode || CallMode.VIDEO;
-      
-      // Check if user exists but in a different location
-      const adminId = req.user?.id || req.user?.userId || req.userId;
-      
-      if (!adminId) {
-        this.logger.error('Admin ID not found in request. Request structure:', req.user);
-        throw new HttpException(
-          'Admin ID is required',
-          HttpStatus.BAD_REQUEST,
-        );
-      }
-      
-      this.logger.log(`Starting call with adminId: ${adminId}, queryId: ${queryId}, mode: ${callMode}`);
-      
-      const result = await this.callsService.startCall(
-        queryId,
-        adminId,
-        callMode,
-      );
-
-      // Log the room URL
-      const roomUrl = result.room.url || `https://${this.callsService.getDomain()}/${result.room.name}`;
-      this.logger.log(`Call room created: ${roomUrl}`);
-      
-      // Send notification to the user if FCM token is available
-      if (result.callSession.query.fcmToken) {
-        await this.notificationsService.sendCallNotification(
-          result.callSession.query.fcmToken,
-          result.callSession.admin.name,
-          result.room.name,
-          result.callSession.mode === CallMode.AUDIO ? 'audio' : 'video'
-        );
-      }
-
-      // Check if the call message was created
-      this.logger.log(`Checking for call messages for queryId: ${queryId}`);
-      const messages = await this.messagesService.findMessages({
-        queryId,
-        messageType: MessageType.CALL_STARTED,
-        limit: 10
-      });
-      this.logger.log(`Found ${messages.length} CALL_STARTED messages for queryId: ${queryId}`);
-      if (messages.length > 0) {
-        this.logger.log(`Latest call message: ${JSON.stringify(messages[0])}`);
-      }
-
-      return {
-        success: true,
-        message: `${result.callSession.mode} call initiated`,
-        data: {
-          callSession: result.callSession,
-          adminToken: result.tokens.admin,
-          userToken: result.tokens.user,
-          roomUrl: roomUrl,
-        },
-      };
-    } catch (error) {
-      this.logger.error('Error starting call:', error);
-      throw new HttpException(
-        error.message || 'Failed to start call',
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
-    }
-  }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
@@ -278,64 +193,29 @@ export class CallsController {
 
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
-  @Post(':queryId/accept-request/:requestId')
-  async acceptSpecificCallRequest(
+  @Post(':queryId/accept-request')
+  async acceptCallRequestWithoutId(
     @Param('queryId') queryId: string,
-    @Param('requestId') requestId: string,
     @Request() req: any,
   ) {
-    try {
-      const adminId = req.user?.id || req.user?.userId || req.userId;
-      
-      if (!adminId) {
-        throw new HttpException(
-          'Admin ID is required',
-          HttpStatus.BAD_REQUEST,
-        );
-      }
-      
-      // Check if admin is assigned to this query
-      const query = await this.callsService.validateAdminAccess(+queryId, adminId);
-      if (!query) {
-        throw new HttpException(
-          'You are not authorized to accept this call request',
-          HttpStatus.FORBIDDEN,
-        );
-      }
-
-      const result = await this.callsService.acceptCallRequest(
-        +queryId,
-        adminId,
-        +requestId,
-      );
-
-      // Log the room URL
-      const roomUrl = result.room.url || `https://${this.callsService.getDomain()}/${result.room.name}`;
-      this.logger.log(`Call room created: ${roomUrl}`);
-
-      return {
-        success: true,
-        message: `Call request accepted and call initiated`,
-        data: {
-          ...result,
-          roomUrl: roomUrl,
-        },
-      };
-    } catch (error) {
-      this.logger.error('Error accepting specific call request:', error);
-      throw new HttpException(
-        error.message || 'Failed to accept call request',
-        error.status || HttpStatus.INTERNAL_SERVER_ERROR,
-      );
-    }
+    return this.handleAcceptCallRequest(queryId, req);
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
-  @Post(':queryId/accept-request')
-  async acceptCallRequest(
+  @Post(':queryId/accept-request/:requestId')
+  async acceptCallRequestWithId(
     @Param('queryId') queryId: string,
+    @Param('requestId') requestId: string,
     @Request() req: any,
+  ) {
+    return this.handleAcceptCallRequest(queryId, req, requestId);
+  }
+
+  private async handleAcceptCallRequest(
+    queryId: string,
+    req: any,
+    requestId?: string,
   ) {
     try {
       // Debug: Log the request object to see its structure
@@ -356,7 +236,7 @@ export class CallsController {
         );
       }
       
-      this.logger.log(`Accepting call request with adminId: ${adminId}, queryId: ${queryId}`);
+      this.logger.log(`Accepting call request with adminId: ${adminId}, queryId: ${queryId}${requestId ? `, requestId: ${requestId}` : ''}`);
       
       // First check if the admin is assigned to this query
       const query = await this.callsService.validateAdminAccess(+queryId, adminId);
@@ -367,23 +247,68 @@ export class CallsController {
         );
       }
 
-      const result = await this.callsService.acceptCallRequest(
-        +queryId,
-        adminId,
-      );
+      try {
+        // Call acceptCallRequest with or without requestId
+        const result = await this.callsService.acceptCallRequest(
+          +queryId,
+          adminId,
+          requestId ? +requestId : undefined
+        );
 
-      // Log the room URL
-      const roomUrl = result.room.url || `https://${this.callsService.getDomain()}/${result.room.name}`;
-      this.logger.log(`Call room created: ${roomUrl}`);
+        // Log the room URL
+        const roomUrl = result.room.url || `https://${this.callsService.getDomain()}/${result.room.name}`;
+        this.logger.log(`Call room created: ${roomUrl}`);
 
-      return {
-        success: true,
-        message: `Call request accepted and call initiated`,
-        data: {
-          ...result,
-          roomUrl: roomUrl, // Include the room URL in the response
-        },
-      };
+        return {
+          success: true,
+          message: `Call request accepted and call initiated`,
+          data: {
+            ...result,
+            roomUrl: roomUrl, // Include the room URL in the response
+          },
+        };
+      } catch (error) {
+        // Check if this is the specific error about an existing active call
+        if (error.message && error.message.includes('There is already an active call for this query')) {
+          // Find the existing active call
+          const existingCalls = await this.prisma.callSession.findMany({
+            where: { 
+              queryId: +queryId,
+              status: {
+                in: ['CREATED', 'STARTED']
+              }
+            },
+            orderBy: { createdAt: 'desc' },
+            include: {
+              admin: {
+                select: {
+                  id: true,
+                  name: true,
+                  role: true,
+                },
+              },
+            },
+            take: 1
+          });
+          
+          if (existingCalls.length > 0) {
+            const existingCall = existingCalls[0];
+            const roomUrl = `https://${this.callsService.getDomain()}/${existingCall.roomName}`;
+            
+            return {
+              success: false,
+              message: `There is already an active call for this query. You can join the existing call.`,
+              data: {
+                existingCall,
+                roomUrl: roomUrl,
+              },
+            };
+          }
+        }
+        
+        // Re-throw the error if it's not about an existing call or if we couldn't find the existing call
+        throw error;
+      }
     } catch (error) {
       this.logger.error('Error accepting call request:', error);
       throw new HttpException(
@@ -473,44 +398,6 @@ export class CallsController {
       this.logger.error('Error getting calls for query:', error);
       throw new HttpException(
         error.message || 'Failed to get calls',
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
-    }
-  }
-
-  @Get('call-session/:callSessionId')
-  async getCallSessionById(@Param('callSessionId', ParseIntPipe) callSessionId: number, @Request() req: any) {
-    try {
-      // Get admin ID from request
-      const adminId = req.user?.id || req.user?.userId || req.userId;
-      
-      if (!adminId) {
-        throw new HttpException(
-          'Admin ID is required',
-          HttpStatus.BAD_REQUEST,
-        );
-      }
-      
-      // First get the call session to check if admin has access
-      const callSession = await this.callsService.getCallSessionById(callSessionId);
-      
-      // Verify that the admin has access to this query
-      const hasAccess = await this.callsService.validateAdminAccess(callSession.queryId, adminId);
-      if (!hasAccess) {
-        throw new HttpException(
-          'You are not authorized to view this call session',
-          HttpStatus.FORBIDDEN,
-        );
-      }
-      
-      return {
-        status: HttpStatus.OK,
-        data: callSession,
-      };
-    } catch (error) {
-      this.logger.error(`Error getting call session by ID ${callSessionId}:`, error);
-      throw new HttpException(
-        error.message || 'Failed to get call session',
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
