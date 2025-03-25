@@ -24,6 +24,8 @@ import { PrismaService } from '../../database/prisma.service';
 import { Public } from 'src/auth/public.decorator';
 import { CreateCallRequestDto } from '../dto/create-call-request.dto';
 import { MessageType } from '@prisma/client';
+import { StartCallDto } from '../dto/start-call.dto';
+import { NotificationsGateway } from '../../notifications/notifications.gateway';
 
 @Controller({
   path: 'communication/call',
@@ -38,7 +40,99 @@ export class CallsController {
     private readonly notificationsService: NotificationsService,
     private readonly messagesService: MessagesService,
     private readonly prisma: PrismaService,
+    private readonly notificationsGateway: NotificationsGateway,
   ) {}
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  @Post(':queryId')
+  async startCall(
+    @Param('queryId', ParseIntPipe) queryId: number,
+    @Body() startCallDto: StartCallDto,
+    @Request() req: any,
+  ) {
+    try {
+      // Debug: Log the request object to see its structure
+      this.logger.debug('Request object in startCall:', JSON.stringify({
+        user: req.user,
+        headers: req.headers,
+        params: req.params,
+        body: req.body
+      }, null, 2));
+      
+      // Ensure we're passing a valid CallMode enum value
+      let callMode = startCallDto.mode || CallMode.VIDEO;
+      
+      // Check if user exists but in a different location
+      const adminId = req.user?.id || req.user?.userId || req.userId;
+      
+      if (!adminId) {
+        this.logger.error('Admin ID not found in request. Request structure:', req.user);
+        throw new HttpException(
+          'Admin ID is required',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+      
+      this.logger.log(`Starting call with adminId: ${adminId}, queryId: ${queryId}, mode: ${callMode}`);
+      
+      const result = await this.callsService.startCall(
+        queryId,
+        adminId,
+        callMode,
+      );
+
+      // Log the room URL
+      const roomUrl = `https://${this.callsService.getDomain()}/${result.room.name}`;
+      this.logger.log(`Call room created: ${roomUrl}`);
+      
+      // Send notification to the user if FCM token is available
+      if (result.callSession.query.fcmToken) {
+        await this.notificationsService.sendCallNotification(
+          result.callSession.query.fcmToken,
+          result.callSession.admin.name,
+          result.room.name,
+          result.callSession.mode === CallMode.AUDIO ? 'audio' : 'video'
+        );
+      }
+
+      // Send WebSocket notification about the call being started
+      this.notificationsGateway.notifyCallStarted(
+        queryId,
+        result.callSession,
+        adminId
+      );
+
+      // Check if the call message was created
+      this.logger.log(`Checking for call messages for queryId: ${queryId}`);
+      const messages = await this.messagesService.findMessages({
+        queryId,
+        messageType: MessageType.CALL_STARTED,
+        limit: 10
+      });
+      this.logger.log(`Found ${messages.length} CALL_STARTED messages for queryId: ${queryId}`);
+      if (messages.length > 0) {
+        this.logger.log(`Latest call message: ${JSON.stringify(messages[0])}`);
+      }
+
+      return {
+        success: true,
+        message: `${result.callSession.mode} call initiated`,
+        data: {
+          callSession: result.callSession,
+          adminToken: result.tokens.admin,
+          userToken: result.tokens.user,
+          roomUrl: roomUrl,
+        },
+      };
+    } catch (error) {
+      this.logger.error('Error starting call:', error);
+      throw new HttpException(
+        error.message || 'Failed to start call',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
@@ -258,6 +352,13 @@ export class CallsController {
         // Log the room URL
         const roomUrl = result.room.url || `https://${this.callsService.getDomain()}/${result.room.name}`;
         this.logger.log(`Call room created: ${roomUrl}`);
+
+        // Send WebSocket notification about the call being started
+        this.notificationsGateway.notifyCallStarted(
+          +queryId,
+          result.callSession,
+          adminId
+        );
 
         return {
           success: true,

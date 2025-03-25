@@ -157,7 +157,8 @@ async function runTest() {
     logger.log('Participant token:', participantToken.token.substring(0, 20) + '...');
     
     // Step 3: Verify room URL
-    const expectedUrl = `https://${domain}.daily.co/${room.name}`;
+    const domainWithSuffix = domain.includes('.daily.co') ? domain : `${domain}.daily.co`;
+    const expectedUrl = `https://${domainWithSuffix}/${room.name}`;
     if (room.url === expectedUrl) {
       logger.log(`Room URL verified: ${room.url}`);
     } else {

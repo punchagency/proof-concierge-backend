@@ -366,6 +366,10 @@ export class CallsService implements OnModuleInit {
 
   // Get the Daily.co domain for constructing room URLs
   getDomain(): string {
+    // Make sure the domain includes the .daily.co suffix
+    if (this.domain && !this.domain.includes('.daily.co')) {
+      return `${this.domain}.daily.co`;
+    }
     return this.domain;
   }
 
@@ -603,7 +607,7 @@ export class CallsService implements OnModuleInit {
       } else {
         // If for some reason the original message doesn't exist, create a new one
         await this.messagesService.create({
-          content: `Call request accepted by ${admin.name}. Join the call: ${this.getDomain()}/${result.room.name}`,
+          content: `Call request accepted by ${admin.name}. Join the call: https://${this.getDomain()}/${result.room.name}`,
           queryId,
           senderId: adminId,
           messageType: MessageType.SYSTEM,

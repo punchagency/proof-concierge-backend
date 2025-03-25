@@ -54,6 +54,7 @@ export class DonorQueriesService {
       include: {
         transferredToUser: true,
         resolvedByUser: true,
+        assignedToUser: true,
         messages: true,
       },
     });
@@ -232,6 +233,11 @@ export class DonorQueriesService {
     // Ensure the query exists
     const query = await this.findOne(id);
     
+    // Validate resolvedById
+    if (!resolvedById) {
+      throw new Error('User ID is required to resolve a query');
+    }
+    
     // Get the user who is resolving the query
     const user = await this.prisma.user.findUnique({
       where: { id: resolvedById },
@@ -271,6 +277,12 @@ export class DonorQueriesService {
     this.notificationsGateway.notifyQueryStatusChange(
       id, 
       'RESOLVED', 
+      user.name
+    );
+    
+    // Additionally send a specific resolution notification
+    this.notificationsGateway.notifyQueryResolution(
+      id,
       user.name
     );
     
@@ -325,6 +337,11 @@ export class DonorQueriesService {
     // Ensure the query exists
     const query = await this.findOne(id);
     
+    // Check if transferredToUserId is valid
+    if (!transferredToUserId || isNaN(transferredToUserId)) {
+      throw new Error('Invalid transferredToUserId: must be a valid number');
+    }
+    
     // Get the user who the query is being transferred to
     const user = await this.prisma.user.findUnique({
       where: { id: transferredToUserId },
@@ -371,7 +388,8 @@ export class DonorQueriesService {
     );
     this.notificationsGateway.notifyQueryStatusChange(
       id, 
-      'TRANSFERRED'
+      'TRANSFERRED',
+      user.name
     );
     
     return updatedQuery;
@@ -693,6 +711,12 @@ export class DonorQueriesService {
       this.notificationsGateway.notifyQueryStatusChange(
         id, 
         'RESOLVED', 
+        'Donor'
+      );
+      
+      // Additionally notify all connected clients about the query being closed by donor
+      this.notificationsGateway.notifyQueryResolution(
+        id,
         'Donor'
       );
       

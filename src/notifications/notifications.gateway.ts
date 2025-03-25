@@ -17,6 +17,7 @@ import { UserRole } from '@prisma/client';
     origin: '*', // In production, restrict this to your frontend domain
   },
   namespace: 'notifications',
+  path: '/api/v1/socket.io'
 })
 export class NotificationsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   private readonly logger = new Logger(NotificationsGateway.name);
@@ -43,20 +44,24 @@ export class NotificationsGateway implements OnGatewayConnection, OnGatewayDisco
       try {
         const decoded = this.jwtService.verify(token);
         client.data.user = decoded;
-        this.logger.log(`Authenticated user connected: ${decoded.email} (role: ${decoded.role})`);
+        
+        // Extract user ID from sub claim if it exists
+        const userId = decoded.sub || decoded.userId;
+        
+        this.logger.log(`Authenticated user connected: ${decoded.username || decoded.email} (role: ${decoded.role})`);
         
         // Join appropriate rooms based on user role
         if (decoded.role === UserRole.ADMIN || decoded.role === UserRole.SUPER_ADMIN) {
           client.join('admins');
-          this.logger.log(`User ${decoded.email} joined admins room`);
+          this.logger.log(`User ${decoded.username || decoded.email} joined admins room`);
         }
         
         // Join user-specific room
-        client.join(`user-${decoded.userId}`);
-        this.logger.log(`User ${decoded.email} joined personal room: user-${decoded.userId}`);
+        client.join(`user-${userId}`);
+        this.logger.log(`User ${decoded.username || decoded.email} joined personal room: user-${userId}`);
         
       } catch (error) {
-        this.logger.warn(`Invalid token for client ${client.id}, disconnecting`);
+        this.logger.warn(`Invalid token for client ${client.id}, disconnecting: ${error.message}`);
         client.disconnect();
       }
     } catch (error) {
@@ -181,5 +186,49 @@ export class NotificationsGateway implements OnGatewayConnection, OnGatewayDisco
       timestamp: new Date().toISOString(),
     });
     this.logger.log(`Emitted queryAssigned event. Query ID: ${queryId}, Assigned To: ${assignedToUserId}`);
+  }
+  
+  /**
+   * Notify about query resolution
+   */
+  notifyQueryResolution(queryId: number, resolvedBy: string) {
+    // Notify query room
+    this.server.to(`query-${queryId}`).emit('queryResolved', {
+      queryId,
+      resolvedBy,
+      timestamp: new Date().toISOString(),
+    });
+    
+    // Also notify admins room for dashboard updates
+    this.server.to('admins').emit('queryResolved', {
+      queryId,
+      resolvedBy,
+      timestamp: new Date().toISOString(),
+    });
+    
+    this.logger.log(`Emitted queryResolved event. Query ID: ${queryId}, Resolved By: ${resolvedBy}`);
+  }
+
+  /**
+   * Notify about call started
+   */
+  notifyCallStarted(queryId: number, callSession: any, adminId: number) {
+    // Notify the query room
+    this.server.to(`query-${queryId}`).emit('callStarted', {
+      queryId,
+      callSession,
+      adminId,
+      timestamp: new Date().toISOString(),
+    });
+    
+    // Also notify admins room for dashboard updates
+    this.server.to('admins').emit('callStarted', {
+      queryId,
+      callSession,
+      adminId,
+      timestamp: new Date().toISOString(),
+    });
+    
+    this.logger.log(`Emitted callStarted event. Query ID: ${queryId}, Call ID: ${callSession.id}`);
   }
 } 
