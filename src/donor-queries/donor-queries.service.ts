@@ -8,6 +8,7 @@ import { MessagesService } from '../communication/services/messages.service';
 import { CallsService } from '../communication/services/calls.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationsGateway } from '../notifications/notifications.gateway';
+import { UserRole } from '@prisma/client';
 
 @Injectable()
 export class DonorQueriesService {
@@ -245,6 +246,14 @@ export class DonorQueriesService {
 
     if (!user) {
       throw new Error('User not found');
+    }
+    
+    // Check if the user is a SUPER_ADMIN or the assigned user
+    const isSuperAdmin = user.role === UserRole.SUPER_ADMIN;
+    const isAssignedUser = query.assignedToId === resolvedById;
+    
+    if (!isSuperAdmin && !isAssignedUser) {
+      throw new Error('Only the assigned admin or a super admin can resolve this query');
     }
     
     // Update the query status to RESOLVED

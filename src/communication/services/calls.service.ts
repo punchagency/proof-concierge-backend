@@ -4,7 +4,13 @@ import { ConfigService } from '@nestjs/config';
 import { lastValueFrom } from 'rxjs';
 import { AxiosError } from 'axios';
 import { PrismaService } from '../../database/prisma.service';
-import { CallMode, CallStatus, MessageType, Prisma, CallSession } from '@prisma/client';
+import {
+  CallMode,
+  CallStatus,
+  MessageType,
+  Prisma,
+  CallSession,
+} from '@prisma/client';
 import { MessagesService } from './messages.service';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { Cron, CronExpression } from '@nestjs/schedule';
@@ -47,7 +53,11 @@ export class CallsService implements OnModuleInit {
     }
   }
 
-  async startCall(queryId: number, adminId: number, mode: CallMode = CallMode.VIDEO) {
+  async startCall(
+    queryId: number,
+    adminId: number,
+    mode: CallMode = CallMode.VIDEO,
+  ) {
     if (!this.isInitialized) {
       throw new Error('Daily.co API not initialized');
     }
@@ -70,12 +80,12 @@ export class CallsService implements OnModuleInit {
       if (adminId === undefined || adminId === null) {
         throw new Error('Admin ID is required');
       }
-      
+
       // Verify admin exists in the database
       const admin = await this.prisma.user.findUnique({
         where: { id: adminId },
       });
-      
+
       if (!admin) {
         throw new Error(`Admin with ID ${adminId} not found`);
       }
@@ -85,14 +95,18 @@ export class CallsService implements OnModuleInit {
         where: {
           queryId,
           status: {
-            in: [CallStatus.CREATED, CallStatus.STARTED]
-          }
-        }
+            in: [CallStatus.CREATED, CallStatus.STARTED],
+          },
+        },
       });
 
       if (existingActiveCalls.length > 0) {
-        this.logger.warn(`Cannot start a new call for query ${queryId} - ${existingActiveCalls.length} active call(s) already exist`);
-        throw new Error(`There is already an active call for this query. Please end the existing call before starting a new one.`);
+        this.logger.warn(
+          `Cannot start a new call for query ${queryId} - ${existingActiveCalls.length} active call(s) already exist`,
+        );
+        throw new Error(
+          `There is already an active call for this query. Please end the existing call before starting a new one.`,
+        );
       }
 
       // Ensure mode is a valid CallMode enum value
@@ -112,10 +126,18 @@ export class CallsService implements OnModuleInit {
 
       // Create a room in Daily.co
       const room = await this.createPrivateRoom({ mode: callMode });
-      
+
       // Generate tokens
-      const adminToken = await this.createMeetingToken(room.name, true, callMode);
-      const userToken = await this.createMeetingToken(room.name, false, callMode);
+      const adminToken = await this.createMeetingToken(
+        room.name,
+        true,
+        callMode,
+      );
+      const userToken = await this.createMeetingToken(
+        room.name,
+        false,
+        callMode,
+      );
 
       // Create call session in database with tokens
       const callSession = await this.prisma.callSession.create({
@@ -126,11 +148,11 @@ export class CallsService implements OnModuleInit {
           userToken: userToken,
           adminToken: adminToken,
           query: {
-            connect: { id: queryId }
+            connect: { id: queryId },
           },
           admin: {
-            connect: { id: adminId }
-          }
+            connect: { id: adminId },
+          },
         },
         include: {
           query: true,
@@ -146,8 +168,8 @@ export class CallsService implements OnModuleInit {
           adminId: adminId,
           // Only consider recently accepted call requests (within the last 10 seconds)
           updatedAt: {
-            gte: new Date(Date.now() - 10 * 1000) // 10 seconds ago
-          }
+            gte: new Date(Date.now() - 10 * 1000), // 10 seconds ago
+          },
         },
         orderBy: {
           updatedAt: 'desc',
@@ -156,10 +178,19 @@ export class CallsService implements OnModuleInit {
 
       // Only create a call started message if it's not from accepting a call request
       if (!isFromCallRequest) {
-        this.logger.log(`Call is not from a call request. Creating call started message for queryId: ${queryId}`);
-        await this.createCallStartedMessage(queryId, adminId, callSession, callMode);
+        this.logger.log(
+          `Call is not from a call request. Creating call started message for queryId: ${queryId}`,
+        );
+        await this.createCallStartedMessage(
+          queryId,
+          adminId,
+          callSession,
+          callMode,
+        );
       } else {
-        this.logger.log(`Call is from a call request. Not creating a separate call started message for queryId: ${queryId}`);
+        this.logger.log(
+          `Call is from a call request. Not creating a separate call started message for queryId: ${queryId}`,
+        );
       }
 
       return {
@@ -195,13 +226,13 @@ export class CallsService implements OnModuleInit {
 
       // Find the existing call started message
       const existingCallMessage = await this.prisma.message.findFirst({
-        where: { 
+        where: {
           callSessionId: callSession.id,
-          messageType: MessageType.CALL_STARTED 
+          messageType: MessageType.CALL_STARTED,
         },
         orderBy: {
-          createdAt: 'desc'
-        }
+          createdAt: 'desc',
+        },
       });
 
       if (existingCallMessage) {
@@ -240,7 +271,7 @@ export class CallsService implements OnModuleInit {
   async updateCallStatus(roomName: string, status: CallStatus) {
     const callSession = await this.prisma.callSession.update({
       where: { roomName },
-      data: { 
+      data: {
         status,
         startedAt: status === CallStatus.STARTED ? new Date() : undefined,
       },
@@ -265,20 +296,28 @@ export class CallsService implements OnModuleInit {
     return callSession;
   }
 
-  private async createPrivateRoom(options: {
-    expiryMinutes?: number;
-    customRoomName?: string;
-    mode?: CallMode;
-  } = {}) {
+  private async createPrivateRoom(
+    options: {
+      expiryMinutes?: number;
+      customRoomName?: string;
+      mode?: CallMode;
+    } = {},
+  ) {
     if (!this.isInitialized) {
       throw new Error('Daily.co API not initialized');
     }
 
     try {
       const url = 'https://api.daily.co/v1/rooms';
-      const { expiryMinutes = 120, customRoomName, mode = CallMode.VIDEO } = options;
+      const {
+        expiryMinutes = 120,
+        customRoomName,
+        mode = CallMode.VIDEO,
+      } = options;
 
-      this.logger.log(`Creating private room with mode: ${mode}, expiryMinutes: ${expiryMinutes}`);
+      this.logger.log(
+        `Creating private room with mode: ${mode}, expiryMinutes: ${expiryMinutes}`,
+      );
 
       const roomConfig = {
         properties: {
@@ -311,14 +350,20 @@ export class CallsService implements OnModuleInit {
     }
   }
 
-  private async createMeetingToken(roomName: string, isAdmin: boolean = false, mode: CallMode = CallMode.VIDEO) {
+  private async createMeetingToken(
+    roomName: string,
+    isAdmin: boolean = false,
+    mode: CallMode = CallMode.VIDEO,
+  ) {
     if (!this.isInitialized) {
       throw new Error('Daily.co API not initialized');
     }
 
     try {
       const url = 'https://api.daily.co/v1/meeting-tokens';
-      this.logger.log(`Creating meeting token for room: ${roomName}, isAdmin: ${isAdmin}, mode: ${mode}`);
+      this.logger.log(
+        `Creating meeting token for room: ${roomName}, isAdmin: ${isAdmin}, mode: ${mode}`,
+      );
 
       const tokenConfig = {
         properties: {
@@ -341,10 +386,15 @@ export class CallsService implements OnModuleInit {
         throw new Error('No response received from Daily API');
       }
 
-      this.logger.log(`Meeting token created successfully for room: ${roomName}`);
+      this.logger.log(
+        `Meeting token created successfully for room: ${roomName}`,
+      );
       return response.data.token as string;
     } catch (error) {
-      this.logger.error(`Error creating meeting token for room: ${roomName}`, error);
+      this.logger.error(
+        `Error creating meeting token for room: ${roomName}`,
+        error,
+      );
       throw error;
     }
   }
@@ -353,7 +403,7 @@ export class CallsService implements OnModuleInit {
     if (error instanceof AxiosError) {
       const status = error.response?.status;
       const data = error.response?.data;
-      
+
       this.logger.error(`${context}: ${error.message}`, {
         status,
         data,
@@ -431,7 +481,7 @@ export class CallsService implements OnModuleInit {
         data: {
           mode: callMode,
           query: {
-            connect: { id: queryId }
+            connect: { id: queryId },
           },
           message: `Donor requested a ${callMode} call`,
         },
@@ -487,87 +537,101 @@ export class CallsService implements OnModuleInit {
     }
   }
 
-  async validateAdminAccess(queryId: number, adminId: number): Promise<boolean> {
+  async validateAdminAccess(
+    queryId: number,
+    adminId: number,
+  ): Promise<boolean> {
     try {
       // Validate inputs
       if (!queryId) {
         this.logger.error('Query ID is required for validateAdminAccess');
         return false;
       }
-      
+
       if (!adminId) {
         this.logger.error('Admin ID is required for validateAdminAccess');
         return false;
       }
-      
+
       // First check if the admin exists
       const admin = await this.prisma.user.findUnique({
         where: { id: adminId },
       });
-      
+
       if (!admin) {
         this.logger.error(`Admin with ID ${adminId} not found`);
         return false;
       }
-      
+
       // Check if admin is a super admin - they can access all queries
       if (admin.role === 'SUPER_ADMIN') {
         return true;
       }
-      
+
       // Check if the admin is assigned to this query
       const query = await this.prisma.donorQuery.findUnique({
-        where: { 
+        where: {
           id: queryId,
           assignedToId: adminId,
         },
       });
-      
+
       if (!query) {
-        this.logger.warn(`Admin ${adminId} is not assigned to query ${queryId}`);
+        this.logger.warn(
+          `Admin ${adminId} is not assigned to query ${queryId}`,
+        );
         return false;
       }
-      
+
       return true;
     } catch (error) {
-      this.logger.error(`Error validating admin access: ${error.message}`, error.stack);
+      this.logger.error(
+        `Error validating admin access: ${error.message}`,
+        error.stack,
+      );
       return false;
     }
   }
 
-  async acceptCallRequest(queryId: number, adminId: number, callRequestId?: number) {
+  async acceptCallRequest(
+    queryId: number,
+    adminId: number,
+    callRequestId?: number,
+  ) {
     try {
       // Validate adminId
       if (adminId === undefined || adminId === null) {
         throw new Error('Admin ID is required');
       }
-      
+
       // Verify admin exists in the database
       const admin = await this.prisma.user.findUnique({
         where: { id: adminId },
       });
-      
+
       if (!admin) {
         throw new Error(`Admin with ID ${adminId} not found`);
       }
-      
+
       // Find the call request to accept
       let callRequest;
-      
+
       if (callRequestId) {
         // If a specific call request ID is provided, use that
         callRequest = await this.prisma.callRequest.findUnique({
-          where: { 
+          where: {
             id: callRequestId,
-            queryId: queryId // Ensure it belongs to the specified query
+            queryId: queryId, // Ensure it belongs to the specified query
           },
           include: {
             query: true,
           },
         });
-        
+
         if (!callRequest) {
-          throw new Error(`Call request with ID ${callRequestId} not found for query ${queryId}`);
+          throw new Error(
+            `Call request with ID ${callRequestId} not found for query ${queryId}`,
+          );
         }
       } else {
         // Otherwise, get the latest pending call request for the query
@@ -614,7 +678,7 @@ export class CallsService implements OnModuleInit {
         // Update the existing message with call details
         const roomUrl = `https://${this.getDomain()}/${result.room.name}`;
         const updatedContent = `${originalMessage.content}\n\n**✅ ACCEPTED by ${admin.name}**\n\n**Join the call:** [Click here to join the ${callRequest.mode} call](${roomUrl})`;
-        
+
         await this.prisma.message.update({
           where: { id: originalMessage.id },
           data: {
@@ -653,10 +717,17 @@ export class CallsService implements OnModuleInit {
     }
   }
 
-  async createCallStartedMessage(queryId: number, adminId: number, callSession: CallSession, mode: CallMode) {
-    this.logger.log(`Creating call started message for queryId: ${queryId}, adminId: ${adminId}, roomName: ${callSession.roomName}`);
+  async createCallStartedMessage(
+    queryId: number,
+    adminId: number,
+    callSession: CallSession,
+    mode: CallMode,
+  ) {
+    this.logger.log(
+      `Creating call started message for queryId: ${queryId}, adminId: ${adminId}, roomName: ${callSession.roomName}`,
+    );
     const content = `Call started by admin. Mode: ${mode}`;
-    
+
     // Create the message with isFromAdmin set to true
     return this.messagesService.create({
       content,
@@ -666,9 +737,9 @@ export class CallsService implements OnModuleInit {
       callMode: mode,
       roomName: callSession.roomName,
       callSessionId: callSession.id,
-      userToken: callSession.userToken || undefined,  // Handle null case
-      adminToken: callSession.adminToken || undefined,  // Handle null case
-      isFromAdmin: true  // Set this to true for call-started messages
+      userToken: callSession.userToken || undefined, // Handle null case
+      adminToken: callSession.adminToken || undefined, // Handle null case
+      isFromAdmin: true, // Set this to true for call-started messages
     });
   }
 
@@ -716,7 +787,7 @@ export class CallsService implements OnModuleInit {
       const admin = await this.prisma.user.findUnique({
         where: { id: adminId },
       });
-      
+
       if (!admin) {
         throw new Error(`Admin with ID ${adminId} not found`);
       }
@@ -745,7 +816,7 @@ export class CallsService implements OnModuleInit {
       if (originalMessage) {
         // Update the existing message instead of creating a new one
         const updatedContent = `${originalMessage.content}\n\n**❌ REJECTED by ${admin.name}**`;
-        
+
         await this.prisma.message.update({
           where: { id: originalMessage.id },
           data: {
@@ -829,7 +900,10 @@ export class CallsService implements OnModuleInit {
 
       return callSession;
     } catch (error) {
-      this.logger.error(`Error getting call session with ID ${callSessionId}:`, error);
+      this.logger.error(
+        `Error getting call session with ID ${callSessionId}:`,
+        error,
+      );
       throw error;
     }
   }
@@ -844,12 +918,12 @@ export class CallsService implements OnModuleInit {
       const activeCalls = await this.prisma.callSession.findMany({
         where: {
           status: {
-            in: [CallStatus.CREATED, CallStatus.STARTED]
-          }
+            in: [CallStatus.CREATED, CallStatus.STARTED],
+          },
         },
         include: {
           query: true,
-        }
+        },
       });
 
       const now = new Date().getTime();
@@ -858,7 +932,7 @@ export class CallsService implements OnModuleInit {
       for (const call of activeCalls) {
         // Call is created with a 2-hour expiry in Daily.co
         const callCreationTime = call.createdAt.getTime();
-        const callExpirationTime = callCreationTime + (120 * 60 * 1000); // 120 minutes in milliseconds
+        const callExpirationTime = callCreationTime + 120 * 60 * 1000; // 120 minutes in milliseconds
 
         // Check if the call has expired
         if (now > callExpirationTime) {
@@ -875,13 +949,13 @@ export class CallsService implements OnModuleInit {
 
           // Find the existing call started message
           const existingCallMessage = await this.prisma.message.findFirst({
-            where: { 
+            where: {
               callSessionId: call.id,
-              messageType: MessageType.CALL_STARTED 
+              messageType: MessageType.CALL_STARTED,
             },
             orderBy: {
-              createdAt: 'desc'
-            }
+              createdAt: 'desc',
+            },
           });
 
           if (existingCallMessage) {
@@ -911,7 +985,10 @@ export class CallsService implements OnModuleInit {
           try {
             await this.deleteRoom(call.roomName);
           } catch (error) {
-            this.logger.error(`Failed to delete expired room ${call.roomName}:`, error);
+            this.logger.error(
+              `Failed to delete expired room ${call.roomName}:`,
+              error,
+            );
           }
         }
       }
@@ -933,12 +1010,12 @@ export class CallsService implements OnModuleInit {
         where: {
           status: CallStatus.STARTED,
           startedAt: {
-            not: null
-          }
+            not: null,
+          },
         },
         include: {
           query: true,
-        }
+        },
       });
 
       const now = new Date().getTime();
@@ -949,9 +1026,10 @@ export class CallsService implements OnModuleInit {
 
       for (const call of activeCalls) {
         if (!call.startedAt) continue; // Skip if no startedAt time (shouldn't happen due to query condition)
-        
+
         const callStartTime = call.startedAt.getTime();
-        const meetingDurationTime = callStartTime + (standardMeetingDuration * 60 * 1000); // Duration in milliseconds
+        const meetingDurationTime =
+          callStartTime + standardMeetingDuration * 60 * 1000; // Duration in milliseconds
 
         // Check if the call has exceeded the standard meeting duration
         if (now > meetingDurationTime) {
@@ -959,15 +1037,15 @@ export class CallsService implements OnModuleInit {
 
           // We don't end these calls automatically, but we mark them as "running long"
           // by creating a message indicating the call has exceeded its standard duration
-          
+
           // Check if we've already sent a message about this (avoid duplicates)
           const existingMessage = await this.prisma.message.findFirst({
             where: {
               callSessionId: call.id,
               content: {
-                contains: 'exceeded the standard meeting duration'
-              }
-            }
+                contains: 'exceeded the standard meeting duration',
+              },
+            },
           });
 
           if (!existingMessage) {
@@ -975,7 +1053,8 @@ export class CallsService implements OnModuleInit {
             await this.messagesService.create({
               queryId: call.queryId,
               senderId: call.adminId,
-              content: 'This call has exceeded the standard meeting duration. You can end it at any time.',
+              content:
+                'This call has exceeded the standard meeting duration. You can end it at any time.',
               messageType: MessageType.SYSTEM,
               callMode: call.mode,
               roomName: call.roomName,
@@ -986,7 +1065,9 @@ export class CallsService implements OnModuleInit {
       }
 
       if (longRunningCalls.length > 0) {
-        this.logger.log(`Found ${longRunningCalls.length} calls exceeding standard meeting duration`);
+        this.logger.log(
+          `Found ${longRunningCalls.length} calls exceeding standard meeting duration`,
+        );
       }
     } catch (error) {
       this.logger.error('Error checking active calls:', error);
@@ -996,19 +1077,21 @@ export class CallsService implements OnModuleInit {
   async endAllActiveCallsForQuery(queryId: number) {
     try {
       this.logger.log(`Ending all active calls for query ID ${queryId}`);
-      
+
       // Find all active call sessions for this query
       const activeCalls = await this.prisma.callSession.findMany({
         where: {
           queryId,
           status: {
-            in: [CallStatus.CREATED, CallStatus.STARTED]
-          }
-        }
+            in: [CallStatus.CREATED, CallStatus.STARTED],
+          },
+        },
       });
-      
-      this.logger.log(`Found ${activeCalls.length} active calls to end for query ${queryId}`);
-      
+
+      this.logger.log(
+        `Found ${activeCalls.length} active calls to end for query ${queryId}`,
+      );
+
       // End each active call
       for (const call of activeCalls) {
         await this.prisma.callSession.update({
@@ -1016,18 +1099,18 @@ export class CallsService implements OnModuleInit {
           data: {
             status: CallStatus.ENDED,
             endedAt: new Date(),
-          }
+          },
         });
-        
+
         // Find the existing call started message
         const existingCallMessage = await this.prisma.message.findFirst({
-          where: { 
+          where: {
             callSessionId: call.id,
-            messageType: MessageType.CALL_STARTED 
+            messageType: MessageType.CALL_STARTED,
           },
           orderBy: {
-            createdAt: 'desc'
-          }
+            createdAt: 'desc',
+          },
         });
 
         if (existingCallMessage) {
@@ -1053,15 +1136,18 @@ export class CallsService implements OnModuleInit {
             isFromAdmin: true,
           });
         }
-        
+
         // Delete the room in Daily.co
         try {
           await this.deleteRoom(call.roomName);
         } catch (error) {
-          this.logger.error(`Failed to delete room ${call.roomName} for resolved query:`, error);
+          this.logger.error(
+            `Failed to delete room ${call.roomName} for resolved query:`,
+            error,
+          );
         }
       }
-      
+
       return activeCalls.length;
     } catch (error) {
       this.logger.error(`Error ending calls for query ${queryId}:`, error);
