@@ -162,71 +162,44 @@ export class DonorQueriesService {
 
   async findByDonorId(donorId: string) {
     try {
-      // Use a minimal query with no select/include to get raw data
-      const queries = await this.prisma.$queryRaw`
-        SELECT dq.*, 
-               ru.id as resolved_by_user_id, ru.username as resolved_by_username, ru.name as resolved_by_name, 
-               ru.email as resolved_by_email, ru.role as resolved_by_role, ru.avatar as resolved_by_avatar,
-               tu.id as transferred_to_user_id, tu.username as transferred_to_username, tu.name as transferred_to_name,
-               tu.email as transferred_to_email, tu.role as transferred_to_role, tu.avatar as transferred_to_avatar
-        FROM "DonorQuery" dq
-        LEFT JOIN "User" ru ON dq."resolvedById" = ru.id
-        LEFT JOIN "User" tu ON dq."transferredToUserId" = tu.id
-        WHERE dq."donorId" = ${donorId}
-      `;
-      
-      // Get messages for each query
-      if (Array.isArray(queries) && queries.length > 0) {
-        for (const query of queries) {
-          const messages = await this.prisma.$queryRaw`
-            SELECT * FROM "Message" WHERE "queryId" = ${query.id} ORDER BY "createdAt" ASC
-          `;
-          query.messages = messages || [];
-          
-          // Format the resolved by user data
-          if (query.resolved_by_user_id) {
-            query.resolvedByUser = {
-              id: query.resolved_by_user_id,
-              username: query.resolved_by_username,
-              name: query.resolved_by_name,
-              email: query.resolved_by_email,
-              role: query.resolved_by_role,
-              avatar: query.resolved_by_avatar
-            };
+      // Use Prisma's standard API instead of raw queries to avoid plan caching issues
+      const queries = await this.prisma.donorQuery.findMany({
+        where: { 
+          donorId 
+        },
+        include: {
+          resolvedByUser: {
+            select: {
+              id: true,
+              username: true,
+              name: true,
+              email: true,
+              role: true,
+              avatar: true
+            }
+          },
+          transferredToUser: {
+            select: {
+              id: true,
+              username: true,
+              name: true,
+              email: true,
+              role: true,
+              avatar: true
+            }
+          },
+          messages: {
+            orderBy: {
+              createdAt: 'asc'
+            }
           }
-          
-          // Format the transferred to user data
-          if (query.transferred_to_user_id) {
-            query.transferredToUser = {
-              id: query.transferred_to_user_id,
-              username: query.transferred_to_username,
-              name: query.transferred_to_name,
-              email: query.transferred_to_email,
-              role: query.transferred_to_role,
-              avatar: query.transferred_to_avatar
-            };
-          }
-          
-          // Clean up the raw fields
-          delete query.resolved_by_user_id;
-          delete query.resolved_by_username;
-          delete query.resolved_by_name;
-          delete query.resolved_by_email;
-          delete query.resolved_by_role;
-          delete query.resolved_by_avatar;
-          delete query.transferred_to_user_id;
-          delete query.transferred_to_username;
-          delete query.transferred_to_name;
-          delete query.transferred_to_email;
-          delete query.transferred_to_role;
-          delete query.transferred_to_avatar;
         }
-      }
+      });
       
       return queries;
     } catch (error) {
       console.error('Error fetching donor queries:', error);
-      return []; // Return empty array on error
+      throw error; // Throw the error instead of swallowing it
     }
   }
 

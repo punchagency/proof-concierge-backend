@@ -210,8 +210,18 @@ export class DonorQueriesController {
         HttpStatus.BAD_REQUEST,
       );
     }
-    const queries = await this.donorQueriesService.findByDonorId(donorId);
-    return queries;
+    try {
+      const queries = await this.donorQueriesService.findByDonorId(donorId);
+      return queries;
+    } catch (error) {
+      throw new HttpException(
+        {
+          status: HttpStatus.INTERNAL_SERVER_ERROR,
+          message: `Failed to fetch donor queries: ${error.message || 'Unknown error'}`,
+        },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
   }
 
   @Get('user/:email')
