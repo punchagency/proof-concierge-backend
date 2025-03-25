@@ -193,16 +193,39 @@ export class CallsService implements OnModuleInit {
         },
       });
 
-      // Create message for call ended
-      await this.messagesService.create({
-        queryId: callSession.queryId,
-        senderId: adminId,
-        content: 'Call ended',
-        messageType: MessageType.CALL_ENDED,
-        callMode: callSession.mode,
-        roomName,
-        callSessionId: callSession.id,
+      // Find the existing call started message
+      const existingCallMessage = await this.prisma.message.findFirst({
+        where: { 
+          callSessionId: callSession.id,
+          messageType: MessageType.CALL_STARTED 
+        },
+        orderBy: {
+          createdAt: 'desc'
+        }
       });
+
+      if (existingCallMessage) {
+        // Update the existing message
+        await this.prisma.message.update({
+          where: { id: existingCallMessage.id },
+          data: {
+            content: 'Call ended',
+            messageType: MessageType.CALL_ENDED,
+            updatedAt: new Date(),
+          },
+        });
+      } else {
+        // Fallback: Create a new message if no existing one is found
+        await this.messagesService.create({
+          queryId: callSession.queryId,
+          senderId: adminId,
+          content: 'Call ended',
+          messageType: MessageType.CALL_ENDED,
+          callMode: callSession.mode,
+          roomName,
+          callSessionId: callSession.id,
+        });
+      }
 
       // Delete the room in Daily.co
       await this.deleteRoom(roomName);
@@ -850,16 +873,39 @@ export class CallsService implements OnModuleInit {
             },
           });
 
-          // Create 'Call ended' message
-          await this.messagesService.create({
-            queryId: call.queryId,
-            senderId: call.adminId,
-            content: 'Call expired',
-            messageType: MessageType.CALL_ENDED,
-            callMode: call.mode,
-            roomName: call.roomName,
-            callSessionId: call.id,
+          // Find the existing call started message
+          const existingCallMessage = await this.prisma.message.findFirst({
+            where: { 
+              callSessionId: call.id,
+              messageType: MessageType.CALL_STARTED 
+            },
+            orderBy: {
+              createdAt: 'desc'
+            }
           });
+
+          if (existingCallMessage) {
+            // Update the existing message
+            await this.prisma.message.update({
+              where: { id: existingCallMessage.id },
+              data: {
+                content: 'Call expired',
+                messageType: MessageType.CALL_ENDED,
+                updatedAt: new Date(),
+              },
+            });
+          } else {
+            // Fallback: Create a new message if no existing one is found
+            await this.messagesService.create({
+              queryId: call.queryId,
+              senderId: call.adminId,
+              content: 'Call expired',
+              messageType: MessageType.CALL_ENDED,
+              callMode: call.mode,
+              roomName: call.roomName,
+              callSessionId: call.id,
+            });
+          }
 
           // Clean up room in Daily.co
           try {
@@ -973,17 +1019,40 @@ export class CallsService implements OnModuleInit {
           }
         });
         
-        // Create 'Call ended' message
-        await this.messagesService.create({
-          queryId: call.queryId,
-          senderId: call.adminId,
-          content: 'Call ended (query was resolved)',
-          messageType: MessageType.CALL_ENDED,
-          callMode: call.mode,
-          roomName: call.roomName,
-          callSessionId: call.id,
-          isFromAdmin: true,
+        // Find the existing call started message
+        const existingCallMessage = await this.prisma.message.findFirst({
+          where: { 
+            callSessionId: call.id,
+            messageType: MessageType.CALL_STARTED 
+          },
+          orderBy: {
+            createdAt: 'desc'
+          }
         });
+
+        if (existingCallMessage) {
+          // Update the existing message
+          await this.prisma.message.update({
+            where: { id: existingCallMessage.id },
+            data: {
+              content: 'Call ended (query was resolved)',
+              messageType: MessageType.CALL_ENDED,
+              updatedAt: new Date(),
+            },
+          });
+        } else {
+          // Fallback: Create a new message if no existing one is found
+          await this.messagesService.create({
+            queryId: call.queryId,
+            senderId: call.adminId,
+            content: 'Call ended (query was resolved)',
+            messageType: MessageType.CALL_ENDED,
+            callMode: call.mode,
+            roomName: call.roomName,
+            callSessionId: call.id,
+            isFromAdmin: true,
+          });
+        }
         
         // Delete the room in Daily.co
         try {
