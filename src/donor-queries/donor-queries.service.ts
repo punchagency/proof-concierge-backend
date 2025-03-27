@@ -128,7 +128,8 @@ export class DonorQueriesService {
         test,
         stage,
         device,
-        content
+        content,
+        donorId
       );
       
       // Send real-time WebSocket notification to all admins

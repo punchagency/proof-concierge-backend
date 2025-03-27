@@ -71,6 +71,7 @@ export class EmailService {
    * Send email notification about a new query to all admins
    * @param queryId Query ID
    * @param donor Donor email or name
+   * @param donorId Donor ID
    * @param test Test name
    * @param stage Test stage
    * @param device Device information
@@ -83,6 +84,7 @@ export class EmailService {
     stage: string,
     device: string,
     content?: string,
+    donorId?: string,
   ): Promise<boolean> {
     if (!this.isInitialized) {
       this.logger.warn('SendGrid not initialized. Skipping email notification.');
@@ -111,6 +113,7 @@ export class EmailService {
           <h2>New Donor Query Received</h2>
           <p><strong>Query ID:</strong> ${queryId}</p>
           <p><strong>Donor:</strong> ${donor}</p>
+          ${donorId ? `<p><strong>Donor ID:</strong> ${donorId}</p>` : ''}
           <p><strong>Test:</strong> ${test}</p>
           <p><strong>Stage:</strong> ${stage}</p>
           <p><strong>Device:</strong> ${device}</p>
@@ -174,6 +177,7 @@ export class EmailService {
         where: { id: queryId },
         select: {
           donor: true,
+          donorId: true,
           test: true,
         },
       });
@@ -193,6 +197,7 @@ export class EmailService {
           <p>A donor has requested a ${callMode} call for:</p>
           <p><strong>Query ID:</strong> ${queryId}</p>
           <p><strong>Donor:</strong> ${query.donor}</p>
+          ${query.donorId ? `<p><strong>Donor ID:</strong> ${query.donorId}</p>` : ''}
           <p><strong>Test:</strong> ${query.test}</p>
           ${message ? `<p><strong>Message:</strong> ${message}</p>` : ''}
         `,
