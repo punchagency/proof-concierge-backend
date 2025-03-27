@@ -13,6 +13,7 @@ import {
 } from '@prisma/client';
 import { MessagesService } from './messages.service';
 import { NotificationsService } from '../../notifications/notifications.service';
+import { EmailService } from '../../notifications/email.service';
 import { Cron, CronExpression } from '@nestjs/schedule';
 
 @Injectable()
@@ -28,6 +29,7 @@ export class CallsService implements OnModuleInit {
     private prisma: PrismaService,
     private messagesService: MessagesService,
     private notificationsService: NotificationsService,
+    private emailService: EmailService,
   ) {}
 
   onModuleInit() {
@@ -500,29 +502,40 @@ export class CallsService implements OnModuleInit {
       });
 
       // If there's an assigned admin, send them a notification
-      if (query.assignedToUser?.fcmToken) {
-        await this.notificationsService.sendNotification(
-          query.assignedToUser.fcmToken,
-          {
-            notification: {
-              title: 'Call Request',
-              body: `Donor requested a ${callMode} call for query #${queryId}`,
-            },
-            data: {
-              type: 'call_request',
-              queryId: queryId.toString(),
-              callRequestId: callRequest.id.toString(),
-              mode: callMode,
-              timestamp: new Date().toISOString(),
-            },
-            android: {
-              priority: 'high',
+      if (query.assignedToUser) {
+        // Send push notification if FCM token is available
+        if (query.assignedToUser.fcmToken) {
+          await this.notificationsService.sendNotification(
+            query.assignedToUser.fcmToken,
+            {
               notification: {
-                channelId: 'calls',
+                title: 'Call Request',
+                body: `Donor requested a ${callMode} call for query #${queryId}`,
+              },
+              data: {
+                type: 'call_request',
+                queryId: queryId.toString(),
+                callRequestId: callRequest.id.toString(),
+                mode: callMode,
+                timestamp: new Date().toISOString(),
+              },
+              android: {
                 priority: 'high',
+                notification: {
+                  channelId: 'calls',
+                  priority: 'high',
+                },
               },
             },
-          },
+          );
+        }
+        
+        // Send email notification to the assigned admin
+        await this.emailService.sendCallRequestNotification(
+          queryId,
+          query.assignedToUser.id,
+          callMode,
+          callRequest.message || undefined
         );
       }
 

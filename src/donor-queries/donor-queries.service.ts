@@ -9,6 +9,7 @@ import { CallsService } from '../communication/services/calls.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationsGateway } from '../notifications/notifications.gateway';
 import { UserRole } from '@prisma/client';
+import { EmailService } from '../notifications/email.service';
 
 @Injectable()
 export class DonorQueriesService {
@@ -18,6 +19,7 @@ export class DonorQueriesService {
     private callsService: CallsService,
     private notificationsService: NotificationsService,
     private notificationsGateway: NotificationsGateway,
+    private emailService: EmailService,
   ) {}
 
   async findAll() {
@@ -117,6 +119,16 @@ export class DonorQueriesService {
           test: test,
           timestamp: new Date().toISOString(),
         }
+      );
+      
+      // Send email notification to all admins about the new query
+      await this.emailService.sendNewQueryNotification(
+        query.id,
+        donor,
+        test,
+        stage,
+        device,
+        content
       );
       
       // Send real-time WebSocket notification to all admins
