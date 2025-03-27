@@ -77,7 +77,7 @@ try {
     console.log('✅ Successfully signed data with the test RSA private key.');
   } catch (error) {
     console.error('❌ Error signing with the test private key:', error.message);
-    console.log('This could indicate issues with private key handling similar to Firebase's problem.');
+    console.log('This could indicate issues with private key handling similar to the Firebase problem.');
   }
 } catch (error) {
   console.error('❌ Error generating test private key:', error.message);
