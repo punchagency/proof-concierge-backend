@@ -3,8 +3,6 @@ import * as admin from 'firebase-admin';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../database/prisma.service';
 import { UserRole } from '@prisma/client';
-import * as fs from 'fs';
-import * as path from 'path';
 
 @Injectable()
 export class NotificationsService implements OnModuleInit {
@@ -47,12 +45,17 @@ export class NotificationsService implements OnModuleInit {
 
       // Properly format the private key to handle various formats and encoding issues
       let formattedPrivateKey = privateKey;
-      
+      // Remove surrounding quotes if present
+      if (formattedPrivateKey.startsWith('"') && formattedPrivateKey.endsWith('"')) {
+        formattedPrivateKey = formattedPrivateKey.slice(1, -1);
+        this.logger.log('Trimmed surrounding quotes from FIREBASE_PRIVATE_KEY');
+      }
+
       // Fix for production: Make sure the key has correct line breaks
-      if (privateKey.includes('\\n')) {
-        formattedPrivateKey = privateKey.replace(/\\n/g, '\n');
-        this.logger.log('Formatted private key by replacing \\n with actual line breaks');
-      } else if (!privateKey.includes('-----BEGIN PRIVATE KEY-----')) {
+      if (formattedPrivateKey.includes('\\n')) {
+        formattedPrivateKey = formattedPrivateKey.replace(/\\n/g, '\n');
+        this.logger.log('Formatted private key by replacing \n with actual line breaks');
+      } else if (!formattedPrivateKey.includes('-----BEGIN PRIVATE KEY-----')) {
         // Sometimes the key might be base64 encoded without proper formatting
         this.logger.warn('Private key appears to be missing BEGIN/END markers - check key format');
       }
