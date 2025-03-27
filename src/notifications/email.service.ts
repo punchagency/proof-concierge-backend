@@ -57,8 +57,9 @@ export class EmailService {
         .map(admin => admin.email)
         .filter((email): email is string => typeof email === 'string' && email.length > 0);
         
-      this.logger.log(`Found ${emails.length} admin emails for notification`);
-      return emails;
+      const uniqueEmails = Array.from(new Set(emails));
+      this.logger.log(`Found ${uniqueEmails.length} unique admin emails for notification`);
+      return uniqueEmails;
     } catch (error) {
       this.logger.error(`Error getting admin emails: ${error.message}`, error.stack);
       return [];
