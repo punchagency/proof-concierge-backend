@@ -22,46 +22,38 @@ export class EmailService {
     try {
       const apiKey = this.configService.get<string>('SENDGRID_API_KEY');
       if (!apiKey) {
-        this.logger.warn('SendGrid API key not configured. Email notifications will be disabled.');
+        this.logger.warn('SendGrid API key not found. Email notifications will be disabled.');
         return;
       }
 
       sgMail.setApiKey(apiKey);
       this.isInitialized = true;
-      this.logger.log('SendGrid email service initialized successfully');
+      this.logger.log('SendGrid initialized successfully');
     } catch (error) {
       this.logger.error(`Error initializing SendGrid: ${error.message}`, error.stack);
     }
   }
 
   /**
-   * Get all admin email addresses
+   * Get email addresses for all admin users
    * @returns Array of admin email addresses
    */
-  async getAdminEmails(): Promise<string[]> {
+  private async getAdminEmails(): Promise<string[]> {
     try {
-      // Find all admin and super admin users with email addresses
+      // Find all admin and super admin users
       const admins = await this.prisma.user.findMany({
         where: {
           role: {
-            in: [UserRole.ADMIN, UserRole.SUPER_ADMIN],
-          },
-          email: {
-            not: null,
-          },
-          isActive: true,
+            in: [UserRole.ADMIN, UserRole.SUPER_ADMIN]
+          }
         },
         select: {
-          email: true,
-        },
+          email: true
+        }
       });
-
-      // Extract email addresses from users and filter out any null values
-      const emails = admins
-        .map((admin) => admin.email)
-        .filter((email): email is string => !!email);
-
-      this.logger.log(`Found ${emails.length} admin email addresses`);
+      
+      const emails = admins.map(admin => admin.email).filter(Boolean);
+      this.logger.log(`Found ${emails.length} admin emails for notification`);
       return emails;
     } catch (error) {
       this.logger.error(`Error getting admin emails: ${error.message}`, error.stack);
@@ -94,6 +86,8 @@ export class EmailService {
     }
 
     try {
+      this.logger.log(`Preparing to send new query notification for Query #${queryId}`);
+      
       const adminEmails = await this.getAdminEmails();
       if (adminEmails.length === 0) {
         this.logger.warn('No admin email addresses found. Skipping notification.');
@@ -126,12 +120,14 @@ export class EmailService {
         `,
       };
 
+      this.logger.log(`Sending new query notification email to ${adminEmails.length} admins for Query #${queryId}`);
+      
       // Send the email
       await sgMail.send(msg);
-      this.logger.log(`New query notification email sent to ${adminEmails.length} admins`);
+      this.logger.log(`✅ New query notification email successfully sent to ${adminEmails.length} admins for Query #${queryId}`);
       return true;
     } catch (error) {
-      this.logger.error(`Error sending new query notification: ${error.message}`, error.stack);
+      this.logger.error(`❌ Error sending new query notification for Query #${queryId}: ${error.message}`, error.stack);
       return false;
     }
   }
@@ -155,6 +151,8 @@ export class EmailService {
     }
 
     try {
+      this.logger.log(`Preparing to send call request notification for Query #${queryId} to Admin #${adminId}`);
+      
       // Find the assigned admin
       const admin = await this.prisma.user.findUnique({
         where: {
@@ -211,12 +209,14 @@ export class EmailService {
         `,
       };
 
+      this.logger.log(`Sending call request notification email to ${admin.email} (${admin.name || 'Unknown Admin'}) for Query #${queryId}`);
+      
       // Send the email
       await sgMail.send(msg);
-      this.logger.log(`Call request notification email sent to ${admin.email}`);
+      this.logger.log(`✅ Call request notification email successfully sent to ${admin.email} for Query #${queryId}`);
       return true;
     } catch (error) {
-      this.logger.error(`Error sending call request notification: ${error.message}`, error.stack);
+      this.logger.error(`❌ Error sending call request notification for Query #${queryId}: ${error.message}`, error.stack);
       return false;
     }
   }
