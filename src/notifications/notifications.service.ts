@@ -43,13 +43,23 @@ export class NotificationsService implements OnModuleInit {
         return;
       }
 
+      // Properly format the private key to handle various formats and encoding issues
+      let formattedPrivateKey = privateKey;
+      
+      // Fix for production: Make sure the key has correct line breaks
+      if (privateKey.includes('\\n')) {
+        formattedPrivateKey = privateKey.replace(/\\n/g, '\n');
+      } else if (!privateKey.includes('-----BEGIN PRIVATE KEY-----')) {
+        // Sometimes the key might be base64 encoded without proper formatting
+        this.logger.warn('Private key appears to be missing BEGIN/END markers - check key format');
+      }
+
       // Initialize Firebase Admin SDK for server-side notifications
       this.adminApp = admin.initializeApp({
         credential: admin.credential.cert({
           projectId,
           clientEmail,
-          // Replace escaped newlines with actual newline characters
-          privateKey: privateKey.replace(/\\n/g, '\n'),
+          privateKey: formattedPrivateKey,
         }),
       });
 
