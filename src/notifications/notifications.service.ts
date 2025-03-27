@@ -30,28 +30,6 @@ export class NotificationsService implements OnModuleInit {
         this.logger.log('Initializing Firebase Admin SDK');
       }
 
-      // Try to use the service account file if available
-      const googleAppCredentials = this.configService.get<string>('GOOGLE_APPLICATION_CREDENTIALS');
-      if (googleAppCredentials) {
-        try {
-          const serviceAccountPath = path.join(process.cwd(), googleAppCredentials);
-          if (fs.existsSync(serviceAccountPath)) {
-            this.logger.log(`Using service account file: ${serviceAccountPath}`);
-            this.adminApp = admin.initializeApp({
-              credential: admin.credential.cert(serviceAccountPath)
-            });
-            this.isInitialized = true;
-            this.logger.log('Firebase Admin SDK initialized successfully with service account file');
-            return;
-          } else {
-            this.logger.warn(`Service account file not found at: ${serviceAccountPath}`);
-          }
-        } catch (error) {
-          this.logger.error('Error loading service account file:', error);
-          // Continue with regular initialization
-        }
-      }
-
       // Get Firebase configuration from environment variables
       const projectId = this.configService.get<string>('FIREBASE_PROJECT_ID');
       const clientEmail = this.configService.get<string>('FIREBASE_CLIENT_EMAIL');
