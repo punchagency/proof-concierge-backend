@@ -131,7 +131,8 @@ export class EmailService {
       this.logger.log(`✅ New query notification email successfully sent to ${adminEmails.length} admins for Query #${queryId}`);
       return true;
     } catch (error) {
-      this.logger.error(`❌ Error sending new query notification for Query #${queryId}: ${error.message}`, error.stack);
+      const detailedError = error.response ? JSON.stringify(error.response.body) : error.message;
+      this.logger.error(`❌ Error sending new query notification for Query #${queryId}: ${detailedError}`, error.stack);
       return false;
     }
   }
