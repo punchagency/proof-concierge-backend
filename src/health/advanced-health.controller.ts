@@ -34,6 +34,7 @@ export class AdvancedHealthController {
       firebase,
       frontend,
       donorQueries,
+      emailService,
     ] = await Promise.all([
       this.healthService.checkDatabase(),
       this.healthService.checkDiskStorage(),
@@ -41,6 +42,7 @@ export class AdvancedHealthController {
       this.healthService.checkFirebase(),
       this.healthService.checkExternalService('http://localhost:3000', 2000), // Adjust timeout and expect local frontend
       this.healthService.checkDonorQueriesHealth(),
+      this.healthService.checkEmailService(),
     ]);
 
     // Create a modified frontend result that uses warning instead of down
@@ -57,6 +59,7 @@ export class AdvancedHealthController {
       firebase.status,
       frontendResult.status,
       donorQueries.status,
+      emailService.status,
     ];
 
     const overallStatus = this.getOverallStatus(statusList);
@@ -72,6 +75,7 @@ export class AdvancedHealthController {
         firebase: { status: firebase.status },
         frontend: { status: frontendResult.status },
         donor_queries: { status: donorQueries.status },
+        email_service: { status: emailService.status },
       },
       error: {},
       details: {
@@ -82,6 +86,7 @@ export class AdvancedHealthController {
         firebase,
         frontend: frontendResult,
         donor_queries: donorQueries,
+        email_service: emailService,
       },
     };
 
@@ -297,8 +302,13 @@ export class AdvancedHealthController {
           <div class="dashboard-item">
             <div class="indicator indicator-${donorQueries.status}"></div>
             <h3>Donor Queries</h3>
-            <p>${donorQueries.status.toUpperCase()}</p>
-            ${donorQueries.queryCount !== undefined ? `<p>${donorQueries.queryCount} queries</p>` : ''}
+            <p>${donorQueries.queryCount ?? 'Unknown'} queries</p>
+          </div>
+          
+          <div class="dashboard-item">
+            <div class="indicator indicator-${emailService.status}"></div>
+            <h3>Email Service</h3>
+            <p>${emailService.message ? emailService.message.split(':')[0] : 'SendGrid'}</p>
           </div>
         </div>
         
@@ -349,6 +359,11 @@ export class AdvancedHealthController {
             <p>${donorQueries.message || 'Donor queries health check passed.'}</p>
             ${donorQueries.queryCount !== undefined ? `<p>Total Queries: ${donorQueries.queryCount}</p>` : ''}
             ${donorQueries.mostRecentQueryDate ? `<p>Most recent query: ${new Date(donorQueries.mostRecentQueryDate).toLocaleString()}</p>` : ''}
+          </div>
+          
+          <div class="component">
+            <h3>Email Service ${getStatusBadge(emailService.status)}</h3>
+            <p>${emailService.message || 'Email service is functioning properly.'}</p>
           </div>
         </div>
         

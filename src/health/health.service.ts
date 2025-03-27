@@ -5,6 +5,7 @@ import { firstValueFrom } from 'rxjs';
 import * as fs from 'fs';
 import * as os from 'os';
 import { PrismaService } from '../database/prisma.service';
+import { EmailService } from '../notifications/email.service';
 
 @Injectable()
 export class HealthService {
@@ -12,6 +13,7 @@ export class HealthService {
     private prisma: PrismaService,
     private httpService: HttpService,
     private configService: ConfigService,
+    private emailService: EmailService,
   ) {}
 
   async checkDatabase(): Promise<any> {
@@ -156,6 +158,58 @@ export class HealthService {
         queryCount: count,
         mostRecentQueryDate: recentQueryDate,
       };
+    } catch (error) {
+      return {
+        status: 'down',
+        message: error.message,
+      };
+    }
+  }
+
+  async checkEmailService(): Promise<any> {
+    try {
+      // Use properties of the EmailService to check its status
+      const apiKey = this.configService.get<string>('SENDGRID_API_KEY');
+      const fromEmail = this.configService.get<string>('SENDGRID_FROM_EMAIL');
+      
+      if (!apiKey || !fromEmail) {
+        return {
+          status: 'warning',
+          message: 'SendGrid not fully configured',
+          details: {
+            apiKey: !!apiKey,
+            fromEmail: !!fromEmail,
+          }
+        };
+      }
+
+      // Check SendGrid API status using their status endpoint
+      try {
+        const response = await firstValueFrom(
+          this.httpService.get('https://status.sendgrid.com/api/v2/summary.json', { 
+            timeout: 5000,
+            validateStatus: () => true
+          })
+        );
+        
+        if (response.status >= 200 && response.status < 300) {
+          return {
+            status: 'up',
+            message: 'SendGrid email service is configured and SendGrid API is reachable'
+          };
+        } else {
+          return {
+            status: 'warning',
+            message: `SendGrid API returned status ${response.status}`,
+          };
+        }
+      } catch (apiError) {
+        return {
+          status: 'warning',
+          message: `SendGrid API check failed: ${apiError.message}`,
+          configured: true
+        };
+      }
     } catch (error) {
       return {
         status: 'down',

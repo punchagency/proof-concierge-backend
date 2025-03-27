@@ -16,12 +16,14 @@ export class HealthController {
     const database = await this.healthService.checkDatabase();
     const storage = await this.healthService.checkDiskStorage();
     const memory = await this.healthService.checkMemory();
+    const emailService = await this.healthService.checkEmailService();
 
     const status = 
       database.status === 'up' && 
       storage.status === 'up' && 
       memory.heap.status === 'up' && 
-      memory.rss.status === 'up' ? 'ok' : 'error';
+      memory.rss.status === 'up' &&
+      (emailService.status === 'up' || emailService.status === 'warning') ? 'ok' : 'error';
     
     // Also prepare JSON response for potential API consumers
     const jsonResponse = {
@@ -38,6 +40,9 @@ export class HealthController {
         },
         memory_rss: {
           status: memory.rss.status
+        },
+        email_service: {
+          status: emailService.status
         }
       },
       error: {},
@@ -45,7 +50,8 @@ export class HealthController {
         database,
         storage,
         memory_heap: memory.heap,
-        memory_rss: memory.rss
+        memory_rss: memory.rss,
+        email_service: emailService
       }
     };
 
@@ -203,6 +209,11 @@ export class HealthController {
           <p>${memory.rss.message || 'Memory RSS check passed.'}</p>
           ${memory.rss.used ? `<p>Used: ${Math.round(memory.rss.used / 1024 / 1024)}MB</p>` : ''}
           ${memory.rss.total ? `<p>Total: ${Math.round(memory.rss.total / 1024 / 1024)}MB</p>` : ''}
+        </div>
+        
+        <div class="component">
+          <h3>Email Service ${getStatusBadge(emailService.status)}</h3>
+          <p>${emailService.message || 'Email service is functioning properly.'}</p>
         </div>
         
         <h2>Additional Health Endpoints</h2>

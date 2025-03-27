@@ -8,12 +8,14 @@ import { UserRole } from '@prisma/client';
 export class EmailService {
   private readonly logger = new Logger(EmailService.name);
   private isInitialized = false;
+  private frontendUrl: string;
 
   constructor(
     private configService: ConfigService,
     private prisma: PrismaService,
   ) {
     this.initialize();
+    this.frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3000';
   }
 
   private initialize() {
@@ -104,6 +106,8 @@ export class EmailService {
         return false;
       }
 
+      const queryLink = `${this.frontendUrl}/donor-queries/${queryId}`;
+
       // Create email content
       const msg = {
         to: adminEmails,
@@ -118,6 +122,7 @@ export class EmailService {
           <p><strong>Stage:</strong> ${stage}</p>
           <p><strong>Device:</strong> ${device}</p>
           ${content ? `<p><strong>Message:</strong> ${content}</p>` : ''}
+          <p><a href="${queryLink}" style="background-color: #4CAF50; color: white; padding: 10px 15px; text-decoration: none; border-radius: 5px; margin-top: 15px; display: inline-block;">View Query</a></p>
         `,
       };
 
@@ -187,6 +192,8 @@ export class EmailService {
         return false;
       }
 
+      const queryLink = `${this.frontendUrl}/donor-queries/${queryId}`;
+
       // Create email content
       const msg = {
         to: admin.email,
@@ -200,6 +207,7 @@ export class EmailService {
           ${query.donorId ? `<p><strong>Donor ID:</strong> ${query.donorId}</p>` : ''}
           <p><strong>Test:</strong> ${query.test}</p>
           ${message ? `<p><strong>Message:</strong> ${message}</p>` : ''}
+          <p><a href="${queryLink}" style="background-color: #4CAF50; color: white; padding: 10px 15px; text-decoration: none; border-radius: 5px; margin-top: 15px; display: inline-block;">View Call Request</a></p>
         `,
       };
 
