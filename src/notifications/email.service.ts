@@ -52,7 +52,11 @@ export class EmailService {
         }
       });
       
-      const emails = admins.map(admin => admin.email).filter(Boolean);
+      // Use type predicate to ensure we only return non-null email strings
+      const emails = admins
+        .map(admin => admin.email)
+        .filter((email): email is string => typeof email === 'string' && email.length > 0);
+        
       this.logger.log(`Found ${emails.length} admin emails for notification`);
       return emails;
     } catch (error) {
