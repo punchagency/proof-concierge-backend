@@ -40,7 +40,7 @@ export class AdvancedHealthController {
       this.healthService.checkDiskStorage(),
       this.healthService.checkMemory(),
       this.healthService.checkFirebase(),
-      this.healthService.checkExternalService('http://localhost:3000', 2000), // Adjust timeout and expect local frontend
+      this.healthService.checkExternalService(this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3000', 2000),
       this.healthService.checkDonorQueriesHealth(),
       this.healthService.checkEmailService(),
     ]);

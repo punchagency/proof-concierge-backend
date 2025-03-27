@@ -251,6 +251,13 @@ export class HealthController {
     return {
       status: 'ok',
       timestamp: new Date().toISOString(),
+      message: 'Server is running',
+      links: {
+        self: '/health/ping',
+        health: '/health',
+        advanced: '/health/advanced',
+        detailed: '/health/advanced/detailed'
+      }
     };
   }
 } 
