@@ -3,6 +3,8 @@ import * as admin from 'firebase-admin';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../database/prisma.service';
 import { UserRole } from '@prisma/client';
+import * as fs from 'fs';
+import * as path from 'path';
 
 @Injectable()
 export class NotificationsService implements OnModuleInit {
@@ -28,6 +30,28 @@ export class NotificationsService implements OnModuleInit {
         this.logger.log('Initializing Firebase Admin SDK');
       }
 
+      // Try to use the service account file if available
+      const googleAppCredentials = this.configService.get<string>('GOOGLE_APPLICATION_CREDENTIALS');
+      if (googleAppCredentials) {
+        try {
+          const serviceAccountPath = path.join(process.cwd(), googleAppCredentials);
+          if (fs.existsSync(serviceAccountPath)) {
+            this.logger.log(`Using service account file: ${serviceAccountPath}`);
+            this.adminApp = admin.initializeApp({
+              credential: admin.credential.cert(serviceAccountPath)
+            });
+            this.isInitialized = true;
+            this.logger.log('Firebase Admin SDK initialized successfully with service account file');
+            return;
+          } else {
+            this.logger.warn(`Service account file not found at: ${serviceAccountPath}`);
+          }
+        } catch (error) {
+          this.logger.error('Error loading service account file:', error);
+          // Continue with regular initialization
+        }
+      }
+
       // Get Firebase configuration from environment variables
       const projectId = this.configService.get<string>('FIREBASE_PROJECT_ID');
       const clientEmail = this.configService.get<string>('FIREBASE_CLIENT_EMAIL');
@@ -49,22 +73,52 @@ export class NotificationsService implements OnModuleInit {
       // Fix for production: Make sure the key has correct line breaks
       if (privateKey.includes('\\n')) {
         formattedPrivateKey = privateKey.replace(/\\n/g, '\n');
+        this.logger.log('Formatted private key by replacing \\n with actual line breaks');
       } else if (!privateKey.includes('-----BEGIN PRIVATE KEY-----')) {
         // Sometimes the key might be base64 encoded without proper formatting
         this.logger.warn('Private key appears to be missing BEGIN/END markers - check key format');
       }
 
-      // Initialize Firebase Admin SDK for server-side notifications
-      this.adminApp = admin.initializeApp({
-        credential: admin.credential.cert({
-          projectId,
-          clientEmail,
-          privateKey: formattedPrivateKey,
-        }),
-      });
+      try {
+        // Initialize Firebase Admin SDK for server-side notifications
+        this.adminApp = admin.initializeApp({
+          credential: admin.credential.cert({
+            projectId,
+            clientEmail,
+            privateKey: formattedPrivateKey,
+          }),
+        });
 
-      this.isInitialized = true;
-      this.logger.log('Firebase Admin SDK initialized successfully');
+        this.isInitialized = true;
+        this.logger.log('Firebase Admin SDK initialized successfully');
+      } catch (certError) {
+        this.logger.error('Firebase credential initialization error:', certError);
+        
+        // Fallback: try one more time with a differently formatted key
+        try {
+          // Sometimes double-escaping can happen, try to fix that
+          if (privateKey.includes('\\\\n')) {
+            formattedPrivateKey = privateKey.replace(/\\\\n/g, '\n');
+            this.logger.log('Attempting with double-escaped newlines replaced');
+            
+            this.adminApp = admin.initializeApp({
+              credential: admin.credential.cert({
+                projectId,
+                clientEmail,
+                privateKey: formattedPrivateKey,
+              }),
+            });
+            
+            this.isInitialized = true;
+            this.logger.log('Firebase Admin SDK initialized successfully on second attempt');
+          } else {
+            throw certError; // Re-throw if we don't have a specific fix to try
+          }
+        } catch (fallbackError) {
+          this.logger.error('All Firebase initialization attempts failed:', fallbackError);
+          // Failed to initialize, notifications will be disabled
+        }
+      }
     } catch (error) {
       this.logger.error('Error initializing Firebase Admin SDK:', error);
       // Don't throw the error, just log it and continue
