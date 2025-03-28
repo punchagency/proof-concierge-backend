@@ -48,7 +48,7 @@ export const productionUsersSeed = async (prisma: PrismaClient): Promise<void> =
         username: 'proof_super_admin',
         password: await hashPassword(superAdminPassword),
         name: 'Proof Super Admin',
-        email: 'support@proofconcierge.com',
+        email: 'Aravind@recoverytrek.com',
         role: UserRole.SUPER_ADMIN,
         avatar: '/images/proof_admin.jpg',
         isActive: true,
