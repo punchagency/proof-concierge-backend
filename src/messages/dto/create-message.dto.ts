@@ -1,12 +1,11 @@
-import { MessageType, CallMode } from '@prisma/client';
+import { MessageType } from '@prisma/client';
 
-export class CreateMessageDto {
+export class MessageDto {
   content: string;
   queryId?: number;
-  senderId: number;
+  senderId?: number;
   recipientId?: number;
   messageType?: MessageType;
-  callMode?: CallMode;
   roomName?: string;
   callSessionId?: number;
   isFromAdmin?: boolean;

@@ -1,35 +1,27 @@
-import { IsOptional, IsString, IsEnum, IsDateString } from 'class-validator';
-import { QueryMode, QueryStatus } from '@prisma/client';
-import { Transform } from 'class-transformer';
+import { IsEnum, IsOptional, IsString } from 'class-validator';
+import { QueryStatus } from '@prisma/client';
 
 export class FilterDonorQueriesDto {
   @IsOptional()
+  page?: number;
+
+  @IsOptional()
+  limit?: number;
+
   @IsString()
-  @Transform(({ value }) => value === '' ? undefined : value)
-  test?: string;
+  @IsOptional()
+  search?: string;
+
+  @IsEnum(QueryStatus, { each: true })
+  @IsOptional()
+  status?: QueryStatus[];
 
   @IsOptional()
-  @IsString()
-  @Transform(({ value }) => value === '' ? undefined : value)
-  stage?: string;
+  assignedToId?: number;
 
   @IsOptional()
-  @IsEnum(QueryMode)
-  @Transform(({ value }) => value === '' ? undefined : value)
-  queryMode?: QueryMode;
+  startDate?: Date;
 
   @IsOptional()
-  @IsString()
-  @Transform(({ value }) => value === '' ? undefined : value)
-  device?: string;
-
-  @IsOptional()
-  @IsDateString()
-  @Transform(({ value }) => value === '' ? undefined : value)
-  date?: string;
-
-  @IsOptional()
-  @IsEnum(QueryStatus)
-  @Transform(({ value }) => value === '' ? undefined : value)
-  status?: QueryStatus;
+  endDate?: Date;
 } 

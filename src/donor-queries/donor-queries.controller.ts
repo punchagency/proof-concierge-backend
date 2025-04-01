@@ -69,13 +69,8 @@ export class DonorQueriesController {
   @Public()
   async findGeneral(@Query() filterDto: FilterDonorQueriesDto) {
     try {
-      // Get queries with both IN_PROGRESS and PENDING_REPLY statuses
-      const statuses = [QueryStatus.IN_PROGRESS, QueryStatus.PENDING_REPLY];
-      const queries =
-        await this.donorQueriesService.findManyByStatusesWithFilters(
-          statuses,
-          filterDto,
-        );
+      // Call the unassigned queries service method
+      const queries = await this.donorQueriesService.findUnassignedQueries(filterDto);
 
       return {
         status: HttpStatus.OK,
@@ -245,6 +240,89 @@ export class DonorQueriesController {
     };
   }
 
+  @Get('transferred-to-me')
+  @Roles('SUPER_ADMIN', 'ADMIN')
+  @LogActivity('Viewed queries transferred to the current admin')
+  async findTransferredToMe(
+    @Query() filterDto: FilterDonorQueriesDto,
+    @Request() req: any,
+  ) {
+    try {
+      // Extract the current admin's ID from the request
+      const adminId = req.user?.id || req.user?.userId;
+      
+      if (!adminId) {
+        throw new HttpException(
+          'User ID not found in the request',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+      
+      const queries = await this.donorQueriesService.findTransferredToAdmin(adminId, filterDto);
+      
+      return {
+        status: HttpStatus.OK,
+        data: queries,
+      };
+    } catch (error) {
+      throw new HttpException(
+        error.message || 'Failed to fetch queries transferred to you',
+        error.status || HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  @Get('unassigned')
+  @Roles('SUPER_ADMIN', 'ADMIN')
+  @LogActivity('Viewed unassigned queries')
+  async findUnassignedQueries(@Query() filterDto: FilterDonorQueriesDto) {
+    try {
+      const queries = await this.donorQueriesService.findUnassignedQueries(filterDto);
+      
+      return {
+        status: HttpStatus.OK,
+        data: queries,
+      };
+    } catch (error) {
+      throw new HttpException(
+        error.message || 'Failed to fetch unassigned queries',
+        error.status || HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  @Get('my-queries')
+  @Roles('SUPER_ADMIN', 'ADMIN')
+  @LogActivity('Viewed queries assigned to the current admin')
+  async findMyQueries(
+    @Query() filterDto: FilterDonorQueriesDto,
+    @Request() req: any,
+  ) {
+    try {
+      // Extract the current admin's ID from the request
+      const adminId = req.user?.id || req.user?.userId;
+      
+      if (!adminId) {
+        throw new HttpException(
+          'User ID not found in the request',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+      
+      const queries = await this.donorQueriesService.findQueriesAssignedToAdmin(adminId, filterDto);
+      
+      return {
+        status: HttpStatus.OK,
+        data: queries,
+      };
+    } catch (error) {
+      throw new HttpException(
+        error.message || 'Failed to fetch your assigned queries',
+        error.status || HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
   @Get(':id')
   @Roles('SUPER_ADMIN', 'ADMIN')
   async findOne(@Param('id', ParseIntPipe) id: number) {
@@ -329,6 +407,7 @@ export class DonorQueriesController {
     @Param('id', ParseIntPipe) id: number,
     @Body('adminId') adminId: number,
     @Body('transferredTo') transferredTo: string,
+    @Request() req: any,
     @Body('transferNote') transferNote?: string,
   ) {
     try {
@@ -345,11 +424,35 @@ export class DonorQueriesController {
       // If transferredTo is not provided, use a default placeholder
       const targetName = transferredTo || 'another admin';
       
+      // Get the current admin's name for the transfer notification
+      const currentUserId = req.user?.id || req.user?.userId;
+      let transferredBy = 'an admin';
+      
+      if (currentUserId) {
+        try {
+          const prismaService = req.app.get('PrismaService');
+          if (prismaService) {
+            const currentUser = await prismaService.user.findUnique({
+              where: { id: currentUserId },
+              select: { name: true, username: true }
+            });
+            
+            if (currentUser) {
+              transferredBy = currentUser.name || currentUser.username || 'an admin';
+            }
+          }
+        } catch (error) {
+          // Just log the error but continue with the default value
+          console.error('Error getting current user name:', error);
+        }
+      }
+      
       const query = await this.donorQueriesService.transferQuery(
         id,
         transferredToUserId,
         targetName,
         transferNote,
+        transferredBy
       );
       
       return {

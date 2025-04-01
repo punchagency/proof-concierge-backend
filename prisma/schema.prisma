@@ -57,6 +57,7 @@ model Message {
   id            Int          @id @default(autoincrement())
   content       String
   isFromAdmin   Boolean      @default(false)
+  senderType    SenderType   @default(ADMIN)
   createdAt     DateTime     @default(now())
   queryId       Int?
   callSessionId Int?
@@ -64,7 +65,9 @@ model Message {
   fcmToken      String?
   recipientId   Int?
   senderId      Int?
-  callMode      CallMode?
+  donorId       String?
+  donorName     String?
+  donorInfo     Json?
   roomName      String?
   messageType   MessageType  @default(QUERY)
   userToken     String?
@@ -81,6 +84,7 @@ model Message {
   @@index([recipientId])
   @@index([callSessionId])
   @@index([callRequestId])
+  @@index([donorId])
 }
 
 model CallSession {
@@ -88,7 +92,6 @@ model CallSession {
   queryId    Int
   adminId    Int
   roomName   String     @unique
-  mode       CallMode
   startedAt  DateTime?
   endedAt    DateTime?
   createdAt  DateTime   @default(now())
@@ -105,16 +108,15 @@ model CallSession {
 }
 
 model CallRequest {
-  id        Int           @id @default(autoincrement())
+  id        Int               @id @default(autoincrement())
   queryId   Int
   adminId   Int?
-  mode      CallMode
   message   String?
   status    CallRequestStatus @default(PENDING)
-  createdAt DateTime      @default(now())
-  updatedAt DateTime      @updatedAt
-  query     DonorQuery    @relation("QueryCallRequests", fields: [queryId], references: [id], onDelete: Cascade)
-  admin     User?         @relation("AdminCallRequests", fields: [adminId], references: [id])
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+  query     DonorQuery        @relation("QueryCallRequests", fields: [queryId], references: [id], onDelete: Cascade)
+  admin     User?             @relation("AdminCallRequests", fields: [adminId], references: [id])
   messages  Message[]
 
   @@index([queryId])
@@ -126,23 +128,11 @@ enum UserRole {
   ADMIN
 }
 
-enum QueryMode {
-  TEXT
-  HUDDLE
-  VIDEO_CALL
-}
-
 enum QueryStatus {
   IN_PROGRESS
   PENDING_REPLY
   RESOLVED
   TRANSFERRED
-}
-
-enum CallMode {
-  VIDEO
-  AUDIO
-  SCREEN
 }
 
 enum MessageType {
@@ -164,4 +154,10 @@ enum CallRequestStatus {
   ACCEPTED
   REJECTED
   CANCELLED
+}
+
+enum SenderType {
+  ADMIN
+  DONOR
+  SYSTEM
 }

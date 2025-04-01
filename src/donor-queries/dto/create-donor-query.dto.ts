@@ -1,5 +1,4 @@
-import { IsEnum, IsNotEmpty, IsOptional, IsString } from 'class-validator';
-import { QueryMode } from '@prisma/client';
+import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
 
 export class CreateDonorQueryDto {
   @IsString()
@@ -16,7 +15,7 @@ export class CreateDonorQueryDto {
 
   @IsString()
   @IsNotEmpty()
-  stage: string
+  stage: string;
 
   @IsString()
   @IsNotEmpty()
@@ -26,17 +25,7 @@ export class CreateDonorQueryDto {
   @IsOptional()
   content?: string;
 
-  @IsOptional()
-  resolvedById?: number;
-
-  @IsOptional()
-  transferredToUserId?: number;
-
   @IsString()
   @IsOptional()
-  transferredTo?: string;
-
-  @IsString()
-  @IsOptional()
-  transferNote?: string;
+  fcmToken?: string;
 } 

@@ -142,13 +142,11 @@ export class EmailService {
    * Send email notification about a call request to the assigned admin
    * @param queryId Query ID
    * @param adminId Assigned admin ID
-   * @param callMode Call mode (VIDEO, AUDIO, SCREEN)
    * @param message Optional message
    */
   async sendCallRequestNotification(
     queryId: number,
     adminId: number,
-    callMode: string,
     message?: string,
   ): Promise<boolean> {
     if (!this.isInitialized) {
@@ -205,7 +203,7 @@ export class EmailService {
         subject: `Call Request: Query #${queryId} from ${query.donor}`,
         html: `
           <h2>New Call Request</h2>
-          <p>A donor has requested a ${callMode} call for:</p>
+          <p>A donor has requested a call for:</p>
           <p><strong>Query ID:</strong> ${queryId}</p>
           <p><strong>Donor:</strong> ${query.donor}</p>
           ${query.donorId ? `<p><strong>Donor ID:</strong> ${query.donorId}</p>` : ''}
@@ -223,6 +221,100 @@ export class EmailService {
       return true;
     } catch (error) {
       this.logger.error(`❌ Error sending call request notification for Query #${queryId}: ${error.message}`, error.stack);
+      return false;
+    }
+  }
+
+  /**
+   * Send email notification to an admin when a query is transferred to them
+   * @param queryId Query ID
+   * @param adminId Admin ID who received the transferred query
+   * @param transferredBy Name of the admin who transferred the query
+   * @param transferNote Optional note about the transfer
+   */
+  async sendQueryTransferNotification(
+    queryId: number,
+    adminId: number,
+    transferredBy?: string,
+    transferNote?: string,
+  ): Promise<boolean> {
+    if (!this.isInitialized) {
+      this.logger.warn('SendGrid not initialized. Skipping email notification.');
+      return false;
+    }
+
+    try {
+      this.logger.log(`Preparing to send query transfer notification for Query #${queryId} to Admin #${adminId}`);
+      
+      // Find the admin who received the transfer
+      const admin = await this.prisma.user.findUnique({
+        where: {
+          id: adminId,
+        },
+        select: {
+          email: true,
+          name: true,
+        },
+      });
+
+      if (!admin?.email) {
+        this.logger.warn(`Admin with ID ${adminId} not found or has no email. Skipping notification.`);
+        return false;
+      }
+
+      const fromEmail = this.configService.get<string>('SENDGRID_FROM_EMAIL');
+      if (!fromEmail) {
+        this.logger.warn('Sender email not configured. Skipping notification.');
+        return false;
+      }
+
+      // Get query details for more context
+      const query = await this.prisma.donorQuery.findUnique({
+        where: { id: queryId },
+        select: {
+          donor: true,
+          donorId: true,
+          test: true,
+          stage: true,
+          device: true,
+        },
+      });
+
+      if (!query) {
+        this.logger.warn(`Query with ID ${queryId} not found. Skipping notification.`);
+        return false;
+      }
+
+      const queryLink = `${this.frontendUrl}/donor-queries/${queryId}`;
+
+      // Create email content
+      const msg = {
+        to: admin.email,
+        from: fromEmail,
+        subject: `Query Transfer: Query #${queryId} from ${query.donor} assigned to you`,
+        html: `
+          <h2>Query Transferred to You</h2>
+          <p>A donor query has been transferred to you:</p>
+          <p><strong>Query ID:</strong> ${queryId}</p>
+          <p><strong>Donor:</strong> ${query.donor}</p>
+          ${query.donorId ? `<p><strong>Donor ID:</strong> ${query.donorId}</p>` : ''}
+          <p><strong>Test:</strong> ${query.test}</p>
+          <p><strong>Stage:</strong> ${query.stage}</p>
+          <p><strong>Device:</strong> ${query.device}</p>
+          ${transferredBy ? `<p><strong>Transferred By:</strong> ${transferredBy}</p>` : ''}
+          ${transferNote ? `<p><strong>Transfer Note:</strong> ${transferNote}</p>` : ''}
+          <p><a href="${queryLink}" style="background-color: #4CAF50; color: white; padding: 10px 15px; text-decoration: none; border-radius: 5px; margin-top: 15px; display: inline-block;">View Query</a></p>
+        `,
+      };
+
+      this.logger.log(`Sending query transfer notification email to ${admin.email} (${admin.name || 'Unknown Admin'}) for Query #${queryId}`);
+      
+      // Send the email
+      await sgMail.send(msg);
+      this.logger.log(`✅ Query transfer notification email successfully sent to ${admin.email} for Query #${queryId}`);
+      return true;
+    } catch (error) {
+      this.logger.error(`❌ Error sending query transfer notification for Query #${queryId}: ${error.message}`, error.stack);
       return false;
     }
   }

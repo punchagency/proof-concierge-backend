@@ -1,5 +1,5 @@
-import { IsEnum, IsNumber, IsOptional, IsString } from 'class-validator';
-import { QueryMode } from '@prisma/client';
+import { IsEnum, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { QueryStatus } from '@prisma/client';
 
 export class UpdateDonorQueryDto {
   @IsString()
@@ -18,19 +18,17 @@ export class UpdateDonorQueryDto {
   @IsOptional()
   stage?: string;
 
-  @IsEnum(QueryMode)
-  @IsOptional()
-  queryMode?: QueryMode;
-
   @IsString()
   @IsOptional()
   device?: string;
 
-  @IsNumber()
+  @IsEnum(QueryStatus)
+  @IsOptional()
+  status?: QueryStatus;
+
   @IsOptional()
   resolvedById?: number;
 
-  @IsNumber()
   @IsOptional()
   transferredToUserId?: number;
 
@@ -41,4 +39,8 @@ export class UpdateDonorQueryDto {
   @IsString()
   @IsOptional()
   transferNote?: string;
+
+  @IsString()
+  @IsOptional()
+  fcmToken?: string;
 } 

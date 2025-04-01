@@ -10,9 +10,12 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationsGateway } from '../notifications/notifications.gateway';
 import { UserRole } from '@prisma/client';
 import { EmailService } from '../notifications/email.service';
+import { Logger } from '@nestjs/common';
 
 @Injectable()
 export class DonorQueriesService {
+  private readonly logger = new Logger(DonorQueriesService.name);
+
   constructor(
     private prisma: PrismaService,
     private messagesService: MessagesService,
@@ -101,7 +104,7 @@ export class DonorQueriesService {
       // If content is provided, create a message for the query
       if (content && query.id) {
         await this.messagesService.create({
-          content,
+          content: content,
           queryId: query.id,
           isFromAdmin: false,
           messageType: MessageType.QUERY
@@ -141,7 +144,7 @@ export class DonorQueriesService {
       // Return the first result (should be the only one)
       return query;
     } catch (error) {
-      console.error('Error creating donor query:', error);
+      this.logger.error('Error creating donor query:', error);
       throw error;
     }
   }
@@ -211,7 +214,7 @@ export class DonorQueriesService {
       
       return queries;
     } catch (error) {
-      console.error('Error fetching donor queries:', error);
+      this.logger.error('Error fetching donor queries:', error);
       throw error; // Throw the error instead of swallowing it
     }
   }
@@ -328,7 +331,7 @@ export class DonorQueriesService {
     return updatedQuery;
   }
 
-  async transferQuery(id: number, transferredToUserId: number, transferredTo: string, transferNote?: string) {
+  async transferQuery(id: number, transferredToUserId: number, transferredTo: string, transferNote?: string, transferredBy?: string) {
     // Ensure the query exists
     const query = await this.findOne(id);
     
@@ -387,6 +390,14 @@ export class DonorQueriesService {
       user.name
     );
     
+    // Send email notification to the admin who received the transfer
+    await this.emailService.sendQueryTransferNotification(
+      id,
+      transferredToUserId,
+      transferredBy || 'an admin',
+      transferNote
+    );
+    
     return updatedQuery;
   }
 
@@ -437,98 +448,184 @@ export class DonorQueriesService {
   }
 
   async findWithFilters(filterDto: FilterDonorQueriesDto) {
-    const { test, stage, queryMode, device, date, status } = filterDto;
+    const { search, status, assignedToId, startDate, endDate } = filterDto;
     
     // Build the query conditions
     const where: any = {};
     
-    if (test) {
-      where.test = test;
+    if (search) {
+      where.OR = [
+        { donor: { contains: search, mode: 'insensitive' } },
+        { donorId: { contains: search, mode: 'insensitive' } },
+        { test: { contains: search, mode: 'insensitive' } },
+        { stage: { contains: search, mode: 'insensitive' } },
+        { device: { contains: search, mode: 'insensitive' } },
+      ];
     }
     
-    if (stage) {
-      where.stage = stage;
+    if (assignedToId) {
+      where.assignedToId = assignedToId;
     }
     
-    if (queryMode) {
-      where.queryMode = queryMode;
-    }
-    
-    if (device) {
-      where.device = device;
-    }
-    
-    if (date) {
-      // Create start and end date for the given date (full day)
-      const startDate = new Date(date);
-      startDate.setHours(0, 0, 0, 0);
-      
-      const endDate = new Date(date);
-      endDate.setHours(23, 59, 59, 999);
-      
+    if (startDate && endDate) {
       where.createdAt = {
-        gte: startDate,
-        lte: endDate,
+        gte: new Date(startDate),
+        lte: new Date(endDate)
+      };
+    } else if (startDate) {
+      where.createdAt = {
+        gte: new Date(startDate)
+      };
+    } else if (endDate) {
+      where.createdAt = {
+        lte: new Date(endDate)
       };
     }
     
-    if (status) {
-      where.status = status;
+    if (status && status.length > 0) {
+      where.status = {
+        in: status
+      };
     }
+    
+    // Calculate pagination
+    const page = filterDto.page || 1;
+    const limit = filterDto.limit || 10;
+    const skip = (page - 1) * limit;
     
     return this.prisma.donorQuery.findMany({
       where,
       include: {
         transferredToUser: true,
         resolvedByUser: true,
+        assignedToUser: true,
       },
+      orderBy: {
+        createdAt: 'desc',
+      },
+      skip,
+      take: limit,
     });
   }
 
   async findAllByStatusWithFilters(status: QueryStatus, filterDto: FilterDonorQueriesDto) {
-    const { test, stage, queryMode, device, date } = filterDto;
+    const { search, assignedToId, startDate, endDate } = filterDto;
     
     // Build the query conditions
     const where: any = {
       status,
     };
     
-    if (test) {
-      where.test = test;
+    if (search) {
+      where.OR = [
+        { donor: { contains: search, mode: 'insensitive' } },
+        { donorId: { contains: search, mode: 'insensitive' } },
+        { test: { contains: search, mode: 'insensitive' } },
+        { stage: { contains: search, mode: 'insensitive' } },
+        { device: { contains: search, mode: 'insensitive' } },
+      ];
     }
     
-    if (stage) {
-      where.stage = stage;
+    if (assignedToId) {
+      where.assignedToId = assignedToId;
     }
     
-    if (queryMode) {
-      where.queryMode = queryMode;
-    }
-    
-    if (device) {
-      where.device = device;
-    }
-    
-    if (date) {
-      // Create start and end date for the given date (full day)
-      const startDate = new Date(date);
-      startDate.setHours(0, 0, 0, 0);
-      
-      const endDate = new Date(date);
-      endDate.setHours(23, 59, 59, 999);
-      
+    if (startDate && endDate) {
       where.createdAt = {
-        gte: startDate,
-        lte: endDate,
+        gte: new Date(startDate),
+        lte: new Date(endDate)
+      };
+    } else if (startDate) {
+      where.createdAt = {
+        gte: new Date(startDate)
+      };
+    } else if (endDate) {
+      where.createdAt = {
+        lte: new Date(endDate)
       };
     }
+    
+    // Calculate pagination
+    const page = filterDto.page || 1;
+    const limit = filterDto.limit || 10;
+    const skip = (page - 1) * limit;
     
     return this.prisma.donorQuery.findMany({
       where,
       include: {
         transferredToUser: true,
         resolvedByUser: true,
+        assignedToUser: true,
       },
+      orderBy: {
+        createdAt: 'desc',
+      },
+      skip,
+      take: limit,
+    });
+  }
+
+  async findManyByStatusesWithFilters(statuses: QueryStatus[], filterDto: FilterDonorQueriesDto) {
+    const { search, assignedToId, startDate, endDate } = filterDto;
+    
+    // Build the query conditions
+    const where: any = {
+      status: {
+        in: statuses,
+      },
+    };
+    
+    if (search) {
+      where.OR = [
+        { donor: { contains: search, mode: 'insensitive' } },
+        { donorId: { contains: search, mode: 'insensitive' } },
+        { test: { contains: search, mode: 'insensitive' } },
+        { stage: { contains: search, mode: 'insensitive' } },
+        { device: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+    
+    if (assignedToId) {
+      where.assignedToId = assignedToId;
+    }
+    
+    if (startDate && endDate) {
+      where.createdAt = {
+        gte: new Date(startDate),
+        lte: new Date(endDate)
+      };
+    } else if (startDate) {
+      where.createdAt = {
+        gte: new Date(startDate)
+      };
+    } else if (endDate) {
+      where.createdAt = {
+        lte: new Date(endDate)
+      };
+    }
+    
+    // Calculate pagination
+    const page = filterDto.page || 1;
+    const limit = filterDto.limit || 10;
+    const skip = (page - 1) * limit;
+    
+    return this.prisma.donorQuery.findMany({
+      where,
+      include: {
+        transferredToUser: true,
+        resolvedByUser: true,
+        assignedToUser: true,
+        messages: {
+          orderBy: {
+            createdAt: 'asc',
+          },
+        },
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+      skip,
+      take: limit,
     });
   }
 
@@ -579,7 +676,7 @@ export class DonorQueriesService {
       // Return the updated query
       return updatedQuery;
     } catch (error) {
-      console.error('Error accepting query:', error);
+      this.logger.error('Error accepting query:', error);
       throw error;
     }
   }
@@ -610,64 +707,6 @@ export class DonorQueriesService {
     });
   }
 
-  async findManyByStatusesWithFilters(statuses: QueryStatus[], filterDto: FilterDonorQueriesDto) {
-    const { test, stage, queryMode, device, date } = filterDto;
-    
-    // Build the query conditions
-    const where: any = {
-      status: {
-        in: statuses,
-      },
-    };
-    
-    if (test) {
-      where.test = test;
-    }
-    
-    if (stage) {
-      where.stage = stage;
-    }
-    
-    if (queryMode) {
-      where.queryMode = queryMode;
-    }
-    
-    if (device) {
-      where.device = device;
-    }
-    
-    if (date) {
-      // Create start and end date for the given date (full day)
-      const startDate = new Date(date);
-      startDate.setHours(0, 0, 0, 0);
-      
-      const endDate = new Date(date);
-      endDate.setHours(23, 59, 59, 999);
-      
-      where.createdAt = {
-        gte: startDate,
-        lte: endDate,
-      };
-    }
-    
-    return this.prisma.donorQuery.findMany({
-      where,
-      orderBy: {
-        createdAt: 'desc',
-      },
-      include: {
-        messages: {
-          orderBy: {
-            createdAt: 'asc',
-          },
-        },
-        transferredToUser: true,
-        resolvedByUser: true,
-        assignedToUser: true,
-      },
-    });
-  }
-
   async donorCloseQuery(id: number, donorId: string) {
     try {
       // Ensure the query exists
@@ -679,7 +718,7 @@ export class DonorQueriesService {
       }
       
       // Check if the query is already resolved or transferred
-      if (query.status === QueryStatus.RESOLVED || query.status === QueryStatus.TRANSFERRED) {
+      if (query.status === QueryStatus.RESOLVED) {
         throw new Error('Query is already closed');
       }
       
@@ -717,7 +756,199 @@ export class DonorQueriesService {
       
       return updatedQuery;
     } catch (error) {
-      console.error('Error closing query by donor:', error);
+      this.logger.error('Error closing query by donor:', error);
+      throw error;
+    }
+  }
+
+  async findTransferredToAdmin(adminId: number, filterDto: FilterDonorQueriesDto | undefined = undefined) {
+    try {
+      // Build query conditions
+      const where: any = {
+        status: QueryStatus.TRANSFERRED,
+        transferredToUserId: adminId,
+      };
+      
+      const filters = filterDto || {};
+      const { search, startDate, endDate } = filters;
+      
+      if (search) {
+        where.OR = [
+          { donor: { contains: search, mode: 'insensitive' } },
+          { donorId: { contains: search, mode: 'insensitive' } },
+          { test: { contains: search, mode: 'insensitive' } },
+          { stage: { contains: search, mode: 'insensitive' } },
+          { device: { contains: search, mode: 'insensitive' } },
+        ];
+      }
+      
+      if (startDate && endDate) {
+        where.createdAt = {
+          gte: new Date(startDate),
+          lte: new Date(endDate)
+        };
+      } else if (startDate) {
+        where.createdAt = {
+          gte: new Date(startDate)
+        };
+      } else if (endDate) {
+        where.createdAt = {
+          lte: new Date(endDate)
+        };
+      }
+      
+      // Calculate pagination
+      const page = filters.page || 1;
+      const limit = filters.limit || 10;
+      const skip = (page - 1) * limit;
+      
+      return this.prisma.donorQuery.findMany({
+        where,
+        include: {
+          transferredToUser: true,
+          messages: {
+            orderBy: {
+              createdAt: 'asc',
+            },
+          },
+        },
+        orderBy: {
+          updatedAt: 'desc', // Show most recently transferred queries first
+        },
+        skip,
+        take: limit,
+      });
+    } catch (error) {
+      this.logger.error(`Error finding queries transferred to admin: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  async findUnassignedQueries(filterDto: FilterDonorQueriesDto | undefined = undefined) {
+    try {
+      // Build query conditions for unassigned queries 
+      // (status is IN_PROGRESS or PENDING_REPLY and assignedToId is null)
+      const where: any = {
+        status: {
+          in: [QueryStatus.IN_PROGRESS, QueryStatus.PENDING_REPLY]
+        },
+        assignedToId: null,
+      };
+      
+      const filters = filterDto || {};
+      const { search, startDate, endDate } = filters;
+      
+      if (search) {
+        where.OR = [
+          { donor: { contains: search, mode: 'insensitive' } },
+          { donorId: { contains: search, mode: 'insensitive' } },
+          { test: { contains: search, mode: 'insensitive' } },
+          { stage: { contains: search, mode: 'insensitive' } },
+          { device: { contains: search, mode: 'insensitive' } },
+        ];
+      }
+      
+      if (startDate && endDate) {
+        where.createdAt = {
+          gte: new Date(startDate),
+          lte: new Date(endDate)
+        };
+      } else if (startDate) {
+        where.createdAt = {
+          gte: new Date(startDate)
+        };
+      } else if (endDate) {
+        where.createdAt = {
+          lte: new Date(endDate)
+        };
+      }
+      
+      // Calculate pagination
+      const page = filters.page || 1;
+      const limit = filters.limit || 10;
+      const skip = (page - 1) * limit;
+      
+      return this.prisma.donorQuery.findMany({
+        where,
+        include: {
+          messages: {
+            orderBy: {
+              createdAt: 'asc',
+            },
+          },
+        },
+        orderBy: {
+          createdAt: 'asc', // Show oldest queries first, as they've been waiting longer
+        },
+        skip,
+        take: limit,
+      });
+    } catch (error) {
+      this.logger.error(`Error finding unassigned queries: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+  
+  async findQueriesAssignedToAdmin(adminId: number, filterDto: FilterDonorQueriesDto | undefined = undefined) {
+    try {
+      // Build query conditions for queries assigned to this admin
+      const where: any = {
+        assignedToId: adminId,
+        status: {
+          in: [QueryStatus.IN_PROGRESS, QueryStatus.PENDING_REPLY]
+        }
+      };
+      
+      const filters = filterDto || {};
+      const { search, startDate, endDate } = filters;
+      
+      if (search) {
+        where.OR = [
+          { donor: { contains: search, mode: 'insensitive' } },
+          { donorId: { contains: search, mode: 'insensitive' } },
+          { test: { contains: search, mode: 'insensitive' } },
+          { stage: { contains: search, mode: 'insensitive' } },
+          { device: { contains: search, mode: 'insensitive' } },
+        ];
+      }
+      
+      if (startDate && endDate) {
+        where.createdAt = {
+          gte: new Date(startDate),
+          lte: new Date(endDate)
+        };
+      } else if (startDate) {
+        where.createdAt = {
+          gte: new Date(startDate)
+        };
+      } else if (endDate) {
+        where.createdAt = {
+          lte: new Date(endDate)
+        };
+      }
+      
+      // Calculate pagination
+      const page = filters.page || 1;
+      const limit = filters.limit || 10;
+      const skip = (page - 1) * limit;
+      
+      return this.prisma.donorQuery.findMany({
+        where,
+        include: {
+          messages: {
+            orderBy: {
+              createdAt: 'asc',
+            },
+          },
+        },
+        orderBy: {
+          updatedAt: 'desc', // Show most recently updated queries first
+        },
+        skip,
+        take: limit,
+      });
+    } catch (error) {
+      this.logger.error(`Error finding queries assigned to admin: ${error.message}`, error.stack);
       throw error;
     }
   }

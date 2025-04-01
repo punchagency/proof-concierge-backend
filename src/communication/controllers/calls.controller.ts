@@ -17,15 +17,14 @@ import { CallsService } from '../services/calls.service';
 import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
 import { RolesGuard } from '../../auth/roles.guard';
 import { Roles } from '../../auth/roles.decorator';
-import { CallMode, CallStatus, UserRole } from '@prisma/client';
+import { CallStatus, UserRole } from '@prisma/client';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { MessagesService } from '../services/messages.service';
 import { PrismaService } from '../../database/prisma.service';
-import { Public } from 'src/auth/public.decorator';
+import { Public } from '../../auth/public.decorator';
 import { CreateCallRequestDto } from '../dto/create-call-request.dto';
-import { MessageType } from '@prisma/client';
 import { StartCallDto } from '../dto/start-call.dto';
-import { NotificationsGateway } from '../../notifications/notifications.gateway';
+import { NotificationsGateway } from 'src/notifications/notifications.gateway';
 
 @Controller({
   path: 'communication/call',
@@ -60,9 +59,6 @@ export class CallsController {
         body: req.body
       }, null, 2));
       
-      // Ensure we're passing a valid CallMode enum value
-      let callMode = startCallDto.mode || CallMode.VIDEO;
-      
       // Check if user exists but in a different location
       const adminId = req.user?.id || req.user?.userId || req.userId;
       
@@ -74,12 +70,11 @@ export class CallsController {
         );
       }
       
-      this.logger.log(`Starting call with adminId: ${adminId}, queryId: ${queryId}, mode: ${callMode}`);
+      this.logger.log(`Starting call with adminId: ${adminId}, queryId: ${queryId}`);
       
       const result = await this.callsService.startCall(
         queryId,
         adminId,
-        callMode,
       );
 
       // Log the room URL
@@ -87,12 +82,12 @@ export class CallsController {
       this.logger.log(`Call room created: ${roomUrl}`);
       
       // Send notification to the user if FCM token is available
-      if (result.callSession.query.fcmToken) {
+      if (result.notificationData?.fcmToken) {
         await this.notificationsService.sendCallNotification(
-          result.callSession.query.fcmToken,
-          result.callSession.admin.name,
+          result.notificationData.fcmToken,
+          result.notificationData.adminName,
           result.room.name,
-          result.callSession.mode === CallMode.AUDIO ? 'audio' : 'video'
+          'video'
         );
       }
 
@@ -107,7 +102,7 @@ export class CallsController {
       this.logger.log(`Checking for call messages for queryId: ${queryId}`);
       const messages = await this.messagesService.findMessages({
         queryId,
-        messageType: MessageType.CALL_STARTED,
+        messageType: 'CALL_STARTED',
         limit: 10
       });
       this.logger.log(`Found ${messages.length} CALL_STARTED messages for queryId: ${queryId}`);
@@ -117,7 +112,7 @@ export class CallsController {
 
       return {
         success: true,
-        message: `${result.callSession.mode} call initiated`,
+        message: `Call initiated`,
         data: {
           callSession: result.callSession,
           adminToken: result.tokens.admin,
@@ -220,12 +215,8 @@ export class CallsController {
     @Body() body: CreateCallRequestDto,
   ) {
     try {
-      // Ensure we're passing a valid CallMode enum value
-      let callMode = body.mode || CallMode.VIDEO;
-      
       const result = await this.callsService.requestCall(
         +queryId,
-        callMode,
       );
 
       return {

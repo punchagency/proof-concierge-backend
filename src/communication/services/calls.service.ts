@@ -5,7 +5,6 @@ import { lastValueFrom } from 'rxjs';
 import { AxiosError } from 'axios';
 import { PrismaService } from '../../database/prisma.service';
 import {
-  CallMode,
   CallStatus,
   MessageType,
   Prisma,
@@ -58,7 +57,6 @@ export class CallsService implements OnModuleInit {
   async startCall(
     queryId: number,
     adminId: number,
-    mode: CallMode = CallMode.VIDEO,
   ) {
     if (!this.isInitialized) {
       throw new Error('Daily.co API not initialized');
@@ -66,12 +64,14 @@ export class CallsService implements OnModuleInit {
 
     console.log('queryId', queryId);
     console.log('adminId', adminId);
-    console.log('mode', mode);
 
     try {
       // First check if the query exists
       const donorQuery = await this.prisma.donorQuery.findUnique({
         where: { id: queryId },
+        include: { // Include FCM token for notification
+          assignedToUser: true
+        }
       });
 
       if (!donorQuery) {
@@ -111,41 +111,23 @@ export class CallsService implements OnModuleInit {
         );
       }
 
-      // Ensure mode is a valid CallMode enum value
-      let callMode = mode;
-      if (typeof mode === 'string') {
-        // Convert string to enum
-        if (mode.toUpperCase() === 'VIDEO') {
-          callMode = CallMode.VIDEO;
-        } else if (mode.toUpperCase() === 'AUDIO') {
-          callMode = CallMode.AUDIO;
-        } else if (mode.toUpperCase() === 'SCREEN') {
-          callMode = CallMode.SCREEN;
-        } else {
-          callMode = CallMode.VIDEO; // Default to VIDEO if invalid
-        }
-      }
-
       // Create a room in Daily.co
-      const room = await this.createPrivateRoom({ mode: callMode });
+      const room = await this.createPrivateRoom();
 
       // Generate tokens
       const adminToken = await this.createMeetingToken(
         room.name,
         true,
-        callMode,
       );
       const userToken = await this.createMeetingToken(
         room.name,
         false,
-        callMode,
       );
 
       // Create call session in database with tokens
-      const callSession = await this.prisma.callSession.create({
+      let callSession = await this.prisma.callSession.create({
         data: {
           roomName: room.name,
-          mode: callMode,
           status: CallStatus.CREATED,
           userToken: userToken,
           adminToken: adminToken,
@@ -187,7 +169,6 @@ export class CallsService implements OnModuleInit {
           queryId,
           adminId,
           callSession,
-          callMode,
         );
       } else {
         this.logger.log(
@@ -195,6 +176,7 @@ export class CallsService implements OnModuleInit {
         );
       }
 
+      // Pass the fcmToken directly since it might be missing from the query relation
       return {
         callSession,
         room,
@@ -202,6 +184,11 @@ export class CallsService implements OnModuleInit {
           admin: adminToken,
           user: userToken,
         },
+        // Add separate fields for notification data
+        notificationData: {
+          fcmToken: donorQuery.fcmToken,
+          adminName: admin.name
+        }
       };
     } catch (error) {
       this.logger.error('Error starting call:', error);
@@ -226,38 +213,63 @@ export class CallsService implements OnModuleInit {
         },
       });
 
-      // Find the existing call started message
-      const existingCallMessage = await this.prisma.message.findFirst({
+      // First, check if this call was from a donor call request
+      const donorCallRequestMessage = await this.prisma.message.findFirst({
         where: {
           callSessionId: callSession.id,
-          messageType: MessageType.CALL_STARTED,
+          messageType: MessageType.SYSTEM,
+          content: {
+            contains: "**✅ ACCEPTED by"
+          }
         },
         orderBy: {
           createdAt: 'desc',
         },
       });
 
-      if (existingCallMessage) {
-        // Update the existing message
+      if (donorCallRequestMessage) {
+        // This was a donor-requested call, update the message
         await this.prisma.message.update({
-          where: { id: existingCallMessage.id },
+          where: { id: donorCallRequestMessage.id },
           data: {
-            content: 'Call ended',
-            messageType: MessageType.CALL_ENDED,
+            content: "Call ended",
             updatedAt: new Date(),
           },
         });
       } else {
-        // Fallback: Create a new message if no existing one is found
-        await this.messagesService.create({
-          queryId: callSession.queryId,
-          senderId: adminId,
-          content: 'Call ended',
-          messageType: MessageType.CALL_ENDED,
-          callMode: callSession.mode,
-          roomName,
-          callSessionId: callSession.id,
+        // Not a donor-requested call, handle normally
+        // Find the existing call started message
+        const existingCallMessage = await this.prisma.message.findFirst({
+          where: {
+            callSessionId: callSession.id,
+            messageType: MessageType.CALL_STARTED,
+          },
+          orderBy: {
+            createdAt: 'desc',
+          },
         });
+
+        if (existingCallMessage) {
+          // Update the existing message
+          await this.prisma.message.update({
+            where: { id: existingCallMessage.id },
+            data: {
+              content: 'Call ended',
+              messageType: MessageType.CALL_ENDED,
+              updatedAt: new Date(),
+            },
+          });
+        } else {
+          // Fallback: Create a new message if no existing one is found
+          await this.messagesService.create({
+            queryId: callSession.queryId,
+            senderId: adminId,
+            content: 'Call ended',
+            messageType: MessageType.CALL_ENDED,
+            roomName,
+            callSessionId: callSession.id,
+          });
+        }
       }
 
       // Delete the room in Daily.co
@@ -289,7 +301,6 @@ export class CallsService implements OnModuleInit {
         senderId: callSession.adminId,
         content: 'Admin joined the call',
         messageType: MessageType.SYSTEM,
-        callMode: callSession.mode,
         roomName,
         callSessionId: callSession.id,
       });
@@ -302,7 +313,6 @@ export class CallsService implements OnModuleInit {
     options: {
       expiryMinutes?: number;
       customRoomName?: string;
-      mode?: CallMode;
     } = {},
   ) {
     if (!this.isInitialized) {
@@ -312,13 +322,12 @@ export class CallsService implements OnModuleInit {
     try {
       const url = 'https://api.daily.co/v1/rooms';
       const {
-        expiryMinutes = 120,
+        expiryMinutes = 60,
         customRoomName,
-        mode = CallMode.VIDEO,
       } = options;
 
       this.logger.log(
-        `Creating private room with mode: ${mode}, expiryMinutes: ${expiryMinutes}`,
+        `Creating private room with expiryMinutes: ${expiryMinutes}`,
       );
 
       const roomConfig = {
@@ -326,9 +335,9 @@ export class CallsService implements OnModuleInit {
           max_participants: 2,
           enable_screenshare: true,
           enable_chat: true,
-          start_video_off: mode === CallMode.AUDIO,
+          start_video_off: false,
           start_audio_off: false,
-          exp: Math.floor(Date.now() / 1000) + expiryMinutes * 60,
+          exp: Math.floor(Date.now() / 1000) + 60 * 60, // Token expires in 1 hour
         },
         privacy: 'private',
         name: customRoomName,
@@ -355,7 +364,6 @@ export class CallsService implements OnModuleInit {
   private async createMeetingToken(
     roomName: string,
     isAdmin: boolean = false,
-    mode: CallMode = CallMode.VIDEO,
   ) {
     if (!this.isInitialized) {
       throw new Error('Daily.co API not initialized');
@@ -364,7 +372,7 @@ export class CallsService implements OnModuleInit {
     try {
       const url = 'https://api.daily.co/v1/meeting-tokens';
       this.logger.log(
-        `Creating meeting token for room: ${roomName}, isAdmin: ${isAdmin}, mode: ${mode}`,
+        `Creating meeting token for room: ${roomName}, isAdmin: ${isAdmin}`,
       );
 
       const tokenConfig = {
@@ -372,9 +380,9 @@ export class CallsService implements OnModuleInit {
           room_name: roomName,
           is_owner: isAdmin,
           enable_screenshare: true,
-          start_video_off: mode === CallMode.AUDIO,
+          start_video_off: false,
           start_audio_off: false,
-          exp: Math.floor(Date.now() / 1000) + 120 * 60, // Token expires in 2 hours
+          exp: Math.floor(Date.now() / 1000) + 60 * 60, // Token expires in 1 hour
         },
       };
 
@@ -449,23 +457,8 @@ export class CallsService implements OnModuleInit {
   }
 
   // Add the missing methods
-  async requestCall(queryId: number, mode: CallMode = CallMode.VIDEO) {
+  async requestCall(queryId: number) {
     try {
-      // Ensure mode is a valid CallMode enum value
-      let callMode = mode;
-      if (typeof mode === 'string') {
-        // Convert string to enum
-        if (mode.toUpperCase() === 'VIDEO') {
-          callMode = CallMode.VIDEO;
-        } else if (mode.toUpperCase() === 'AUDIO') {
-          callMode = CallMode.AUDIO;
-        } else if (mode.toUpperCase() === 'SCREEN') {
-          callMode = CallMode.SCREEN;
-        } else {
-          callMode = CallMode.VIDEO; // Default to VIDEO if invalid
-        }
-      }
-
       // Get the query to ensure it exists and get donor details
       const query = await this.prisma.donorQuery.findUnique({
         where: { id: queryId },
@@ -481,11 +474,10 @@ export class CallsService implements OnModuleInit {
       // Create a call request in the database
       const callRequest = await this.prisma.callRequest.create({
         data: {
-          mode: callMode,
           query: {
             connect: { id: queryId },
           },
-          message: `Donor requested a ${callMode} call`,
+          message: `Donor requested a call`,
         },
         include: {
           query: true,
@@ -494,10 +486,9 @@ export class CallsService implements OnModuleInit {
 
       // Create a message linked to the call request
       const message = await this.messagesService.create({
-        content: `Donor requested a ${callMode} call`,
+        content: `Donor requested a call`,
         queryId,
         messageType: MessageType.SYSTEM,
-        callMode: callMode,
         callRequestId: callRequest.id,
       });
 
@@ -510,13 +501,12 @@ export class CallsService implements OnModuleInit {
             {
               notification: {
                 title: 'Call Request',
-                body: `Donor requested a ${callMode} call for query #${queryId}`,
+                body: `Donor requested a call for query #${queryId}`,
               },
               data: {
                 type: 'call_request',
                 queryId: queryId.toString(),
                 callRequestId: callRequest.id.toString(),
-                mode: callMode,
                 timestamp: new Date().toISOString(),
               },
               android: {
@@ -534,7 +524,6 @@ export class CallsService implements OnModuleInit {
         await this.emailService.sendCallRequestNotification(
           queryId,
           query.assignedToUser.id,
-          callMode,
           callRequest.message || undefined
         );
       }
@@ -677,7 +666,7 @@ export class CallsService implements OnModuleInit {
       });
 
       // Start the call using the requested mode, but don't create an additional call started message
-      const result = await this.startCall(queryId, adminId, callRequest.mode);
+      const result = await this.startCall(queryId, adminId);
 
       // Find the original call request message to update it
       const originalMessage = await this.prisma.message.findFirst({
@@ -690,13 +679,12 @@ export class CallsService implements OnModuleInit {
       if (originalMessage) {
         // Update the existing message with call details
         const roomUrl = `https://${this.getDomain()}/${result.room.name}`;
-        const updatedContent = `${originalMessage.content}\n\n**✅ ACCEPTED by ${admin.name}**\n\n**Join the call:** [Click here to join the ${callRequest.mode} call](${roomUrl})`;
+        const updatedContent = `${originalMessage.content}\n\n**✅ ACCEPTED by ${admin.name}**\n\n**Join the call:** [Click here to join the call](${roomUrl})`;
 
         await this.prisma.message.update({
           where: { id: originalMessage.id },
           data: {
             content: updatedContent,
-            callMode: callRequest.mode,
             roomName: result.room.name,
             callSessionId: result.callSession.id,
             userToken: result.tokens.user,
@@ -711,7 +699,6 @@ export class CallsService implements OnModuleInit {
           queryId,
           senderId: adminId,
           messageType: MessageType.SYSTEM,
-          callMode: callRequest.mode,
           roomName: result.room.name,
           callSessionId: result.callSession.id,
           callRequestId: callRequest.id,
@@ -734,12 +721,11 @@ export class CallsService implements OnModuleInit {
     queryId: number,
     adminId: number,
     callSession: CallSession,
-    mode: CallMode,
   ) {
     this.logger.log(
       `Creating call started message for queryId: ${queryId}, adminId: ${adminId}, roomName: ${callSession.roomName}`,
     );
-    const content = `Call started by admin. Mode: ${mode}`;
+    const content = `Call started by admin`;
 
     // Create the message with isFromAdmin set to true
     return this.messagesService.create({
@@ -747,7 +733,6 @@ export class CallsService implements OnModuleInit {
       queryId,
       senderId: adminId,
       messageType: MessageType.CALL_STARTED,
-      callMode: mode,
       roomName: callSession.roomName,
       callSessionId: callSession.id,
       userToken: callSession.userToken || undefined, // Handle null case
@@ -943,9 +928,9 @@ export class CallsService implements OnModuleInit {
       const expiredCalls: typeof activeCalls = [];
 
       for (const call of activeCalls) {
-        // Call is created with a 2-hour expiry in Daily.co
+        // Call is created with a 1-hour expiry in Daily.co
         const callCreationTime = call.createdAt.getTime();
-        const callExpirationTime = callCreationTime + 120 * 60 * 1000; // 120 minutes in milliseconds
+        const callExpirationTime = callCreationTime + 60 * 60 * 1000;
 
         // Check if the call has expired
         if (now > callExpirationTime) {
@@ -988,7 +973,6 @@ export class CallsService implements OnModuleInit {
               senderId: call.adminId,
               content: 'Call expired',
               messageType: MessageType.CALL_ENDED,
-              callMode: call.mode,
               roomName: call.roomName,
               callSessionId: call.id,
             });
@@ -1069,7 +1053,6 @@ export class CallsService implements OnModuleInit {
               content:
                 'This call has exceeded the standard meeting duration. You can end it at any time.',
               messageType: MessageType.SYSTEM,
-              callMode: call.mode,
               roomName: call.roomName,
               callSessionId: call.id,
             });
@@ -1143,7 +1126,6 @@ export class CallsService implements OnModuleInit {
             senderId: call.adminId,
             content: 'Call ended (query was resolved)',
             messageType: MessageType.CALL_ENDED,
-            callMode: call.mode,
             roomName: call.roomName,
             callSessionId: call.id,
             isFromAdmin: true,

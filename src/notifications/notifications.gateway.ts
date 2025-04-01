@@ -10,7 +10,7 @@ import {
 import { Server, Socket } from 'socket.io';
 import { Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { UserRole } from '@prisma/client';
+import { UserRole, SenderType, Message } from '@prisma/client';
 
 @WebSocketGateway({
   cors: {
@@ -25,18 +25,32 @@ export class NotificationsGateway implements OnGatewayConnection, OnGatewayDisco
   @WebSocketServer()
   server: Server;
   
+  // Track connected clients
+  private clients = new Map<string, { 
+    userId?: number,
+    donorId?: string,
+    queryIds: Set<number>,
+    authenticated: boolean,
+    role?: UserRole
+  }>();
+  
   constructor(private jwtService: JwtService) {}
+  
+  // Method to get client data by ID
+  getClientData(clientId: string) {
+    return this.clients.get(clientId);
+  }
   
   async handleConnection(client: Socket) {
     try {
       this.logger.log(`Client connected: ${client.id}`);
+      this.clients.set(client.id, { queryIds: new Set(), authenticated: false });
       
       // Get token from handshake auth
       const token = client.handshake.auth.token || client.handshake.headers.authorization?.split(' ')[1];
       
       if (!token) {
-        this.logger.warn(`Client ${client.id} has no token, disconnecting`);
-        client.disconnect();
+        this.logger.warn(`Client ${client.id} has no token, connection allowed but not authenticated`);
         return;
       }
       
@@ -50,6 +64,14 @@ export class NotificationsGateway implements OnGatewayConnection, OnGatewayDisco
         
         this.logger.log(`Authenticated user connected: ${decoded.username || decoded.email} (role: ${decoded.role})`);
         
+        // Update client tracking
+        const clientData = this.clients.get(client.id);
+        if (clientData) {
+          clientData.userId = userId;
+          clientData.authenticated = true;
+          clientData.role = decoded.role;
+        }
+        
         // Join appropriate rooms based on user role
         if (decoded.role === UserRole.ADMIN || decoded.role === UserRole.SUPER_ADMIN) {
           client.join('admins');
@@ -61,31 +83,45 @@ export class NotificationsGateway implements OnGatewayConnection, OnGatewayDisco
         this.logger.log(`User ${decoded.username || decoded.email} joined personal room: user-${userId}`);
         
       } catch (error) {
-        this.logger.warn(`Invalid token for client ${client.id}, disconnecting: ${error.message}`);
-        client.disconnect();
+        this.logger.warn(`Invalid token for client ${client.id}: ${error.message}`);
       }
     } catch (error) {
       this.logger.error(`Error in handleConnection: ${error.message}`);
-      client.disconnect();
     }
   }
   
   handleDisconnect(client: Socket) {
     this.logger.log(`Client disconnected: ${client.id}`);
+    this.clients.delete(client.id);
   }
   
+  // Enhanced join query room method
   @SubscribeMessage('joinQueryRoom')
   handleJoinQueryRoom(
     @ConnectedSocket() client: Socket,
-    @MessageBody() data: { queryId: number }
+    @MessageBody() data: { queryId: number, donorId?: string }
   ) {
-    if (!client.data.user) {
-      return { success: false, message: 'Not authenticated' };
+    const clientData = this.clients.get(client.id);
+    
+    if (!clientData) {
+      return { success: false, message: 'Client not found' };
     }
     
     const roomName = `query-${data.queryId}`;
     client.join(roomName);
-    this.logger.log(`User ${client.data.user.email} joined room: ${roomName}`);
+    
+    // Track which query rooms this client has joined
+    clientData.queryIds.add(data.queryId);
+    
+    // If provided, store donorId for donor clients
+    if (data.donorId) {
+      clientData.donorId = data.donorId;
+      this.logger.log(`Donor ${data.donorId} joined room: ${roomName}`);
+    } else if (clientData.userId) {
+      this.logger.log(`User ${clientData.userId} joined room: ${roomName}`);
+    } else {
+      this.logger.log(`Anonymous client joined room: ${roomName}`);
+    }
     
     return { success: true, message: `Joined room: ${roomName}` };
   }
@@ -95,15 +131,64 @@ export class NotificationsGateway implements OnGatewayConnection, OnGatewayDisco
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { queryId: number }
   ) {
-    if (!client.data.user) {
-      return { success: false, message: 'Not authenticated' };
+    const clientData = this.clients.get(client.id);
+    if (!clientData) {
+      return { success: false, message: 'Client not found' };
     }
     
     const roomName = `query-${data.queryId}`;
     client.leave(roomName);
-    this.logger.log(`User ${client.data.user.email} left room: ${roomName}`);
+    
+    // Remove from tracked queries
+    clientData.queryIds.delete(data.queryId);
+    
+    this.logger.log(`Client ${client.id} left room: ${roomName}`);
     
     return { success: true, message: `Left room: ${roomName}` };
+  }
+  
+  // Method to emit a better formatted message to clients
+  emitEnhancedMessage(queryId: number, message: any) {
+    // Format the message with sender details
+    const formattedMessage = {
+      id: message.id,
+      content: message.content,
+      queryId: message.queryId,
+      messageType: message.messageType,
+      senderType: message.senderType,
+      createdAt: message.createdAt,
+      
+      // Include appropriate sender information based on type
+      sender: message.senderType === SenderType.ADMIN ? {
+        id: message.senderId,
+        name: message.sender?.name || 'Admin',
+        avatar: message.sender?.avatar
+      } : message.senderType === SenderType.DONOR ? {
+        donorId: message.donorId,
+        name: message.donorName || 'Donor'
+      } : {
+        system: true,
+        name: 'System'
+      },
+      
+      // Include any call information if present
+      callSessionId: message.callSessionId,
+      roomName: message.roomName,
+
+      // Add sender identifiers to help clients filter their own messages
+      senderIdentifiers: {
+        senderId: message.senderId || null,
+        donorId: message.donorId || null
+      }
+    };
+    
+    // Emit to all clients in the query room
+    // Clients will need to filter out their own messages client-side
+    this.server.to(`query-${queryId}`).emit('enhancedMessage', formattedMessage);
+    
+    this.logger.log(`Emitted enhancedMessage for query ${queryId}, message ID: ${message.id}`);
+    
+    return formattedMessage;
   }
   
   // Methods to emit events to clients
@@ -144,17 +229,34 @@ export class NotificationsGateway implements OnGatewayConnection, OnGatewayDisco
   }
   
   /**
-   * Notify about new message
+   * Legacy method - Notify about new message (for backward compatibility)
    */
   notifyNewMessage(queryId: number, messageId: number, senderId: number, isFromAdmin: boolean) {
-    this.server.to(`query-${queryId}`).emit('newMessage', {
+    const eventData = {
       queryId,
       messageId,
       senderId,
       isFromAdmin,
       timestamp: new Date().toISOString(),
-    });
-    this.logger.log(`Emitted newMessage event. Query ID: ${queryId}, Message ID: ${messageId}`);
+      // Add a field to help clients identify their own messages
+      senderIdentifiers: {
+        senderId: senderId || null,
+        // Legacy method doesn't have donorId, clients will need to match on senderId
+      }
+    };
+    
+    // Emit to all clients in the query room
+    // Clients will need to filter out their own messages client-side
+    this.server.to(`query-${queryId}`).emit('newMessage', eventData);
+    
+    this.logger.log(`Emitted legacy newMessage event. Query ID: ${queryId}, Message ID: ${messageId}`);
+  }
+  
+  /**
+   * Enhanced method - Notify about new message with full details
+   */
+  notifyEnhancedMessage(queryId: number, message: Message) {
+    return this.emitEnhancedMessage(queryId, message);
   }
   
   /**

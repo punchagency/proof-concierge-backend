@@ -1,11 +1,6 @@
-import { IsEnum, IsNotEmpty, IsOptional, IsString } from 'class-validator';
-import { CallMode } from '@prisma/client';
+import { IsOptional, IsString } from 'class-validator';
 
 export class CreateCallRequestDto {
-  @IsEnum(CallMode)
-  @IsNotEmpty()
-  mode: CallMode = CallMode.VIDEO;
-
   @IsString()
   @IsOptional()
   message?: string;

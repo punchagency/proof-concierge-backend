@@ -1,8 +1,5 @@
-import { IsEnum, IsOptional } from 'class-validator';
-import { CallMode } from '@prisma/client';
+import { IsOptional } from 'class-validator';
 
 export class StartCallDto {
-  @IsEnum(CallMode)
-  @IsOptional()
-  mode?: CallMode = CallMode.VIDEO;
+  // No need for properties as all calls are the same
 } 

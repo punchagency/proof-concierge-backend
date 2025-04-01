@@ -35,9 +35,8 @@ This document provides a detailed guide to all the API endpoints in the Proof Co
     - [GET /messages/query/:queryId](#get-messagesqueryqueryid)
     - [GET /messages/:queryId](#get-messagesqueryid)
     - [GET /messages/between/:userId1/:userId2](#get-messagesbetweenuserid1userid2)
+    - [Enhanced Message Handling System](#enhanced-message-handling-system)
   - [Communication](#communication)
-    - [POST /communication/call/:roomName/end](#post-communicationcallroomnameend)
-    - [PUT /communication/call/:roomName/status](#put-communicationcallroomnamestatus)
     - [GET /communication/calls/:queryId](#get-communicationcallsqueryid)
     - [POST /communication/call/:queryId](#post-communicationcallqueryid)
     - [POST /communication/call/:queryId/request](#post-communicationcallqueryidrequest)
@@ -60,6 +59,9 @@ This document provides a detailed guide to all the API endpoints in the Proof Co
     - [Messages Management](#messages-management)
       - [POST /messages/admin/:queryId](#post-messagesadminqueryid)
       - [GET /messages/admin/:queryId](#get-messagesadminqueryid)
+      - [POST /messages/donor/:queryId](#post-messagesdonorqueryid)
+      - [POST /messages/system/:queryId](#post-messagessystemqueryid)
+      - [GET /messages/donor/:donorId](#get-messagesdonordonorid)
   - [Donor Queries Management](#donor-queries-management)
     - [GET /donor-queries](#get-donor-queries)
     - [GET /donor-queries/admin/:id](#get-donor-queriesadminid)
@@ -124,11 +126,12 @@ The system uses Socket.IO (integrated with NestJS's `WebSocketGateway`) to provi
    |-------|-------------|-----------------|
    | `queryStatusChanged` | When query status changes | `{ queryId: 123, status: 'RESOLVED', changedBy: 'Admin Name' }` |
    | `newQuery` | When a new query is created | `{ queryId: 123, donor: 'john.doe@example.com' }` |
-   | `newMessage` | When a new message is added | `{ queryId: 123, messageId: 456, content: '...' }` |
+   | `newMessage` | When a new message is added (legacy format) | `{ queryId: 123, messageId: 456, content: '...' }` |
+   | `enhancedMessage` | When a new message is added with sender details | `{ id: 456, content: '...', queryId: 123, senderType: 'DONOR', sender: { donorId: 'donor_001', name: 'John Doe' } }` |
    | `queryTransferred` | When query is transferred | `{ queryId: 123, fromUserId: 456, toUserId: 789 }` |
    | `queryAssigned` | When query is assigned | `{ queryId: 123, userId: 456 }` |
-   | `callRequested` | When a call is requested | `{ queryId: 123, requestId: 789, mode: 'VIDEO' }` |
-   | `callStarted` | When a call is started | `{ queryId: 123, callSession: { id: 456, roomName: 'room-xyz', mode: 'VIDEO' }, adminId: 789 }` |
+   | `callRequested` | When a call is requested | `{ queryId: 123, requestId: 789 }` |
+   | `callStarted` | When a call is started | `{ queryId: 123, callSession: { id: 456, roomName: 'room-xyz' }, adminId: 789 }` |
    | `callStatusChanged` | When call status changes | `{ queryId: 123, callId: 456, status: 'STARTED' }` |
 
 4. **Client Usage Example**:
@@ -153,8 +156,26 @@ The system uses Socket.IO (integrated with NestJS's `WebSocketGateway`) to provi
    
    // Listen for various notification types
    socket.on('newMessage', (data) => {
-     console.log('New message received:', data);
+     console.log('New message received (legacy format):', data);
      // Handle new message notification
+   });
+   
+   socket.on('enhancedMessage', (data) => {
+     console.log('Enhanced message received:', data);
+     // Handle enhanced message with sender details
+     const { senderType, sender } = data;
+     
+     // Display different UI elements based on sender type
+     if (senderType === 'ADMIN') {
+       // Show admin avatar and name
+       showAdminMessage(sender.name, data.content, sender.avatar);
+     } else if (senderType === 'DONOR') {
+       // Show donor message with donor name
+       showDonorMessage(sender.name, data.content);
+     } else {
+       // Show system message
+       showSystemMessage(data.content);
+     }
    });
    
    socket.on('queryStatusChange', (data) => {
@@ -502,10 +523,7 @@ curl --location --request GET 'http://localhost:3000/health/advanced/detailed'
 
 - **Method:** POST
 - **URL:** `/donor-queries`
-- **Body:** Must follow the `CreateDonorQueryDto` schema.
-
-**Sample Request Body:**
-
+- **Body:**
 ```json
 {
   "donor": "john.doe@example.com",
@@ -513,6 +531,7 @@ curl --location --request GET 'http://localhost:3000/health/advanced/detailed'
   "test": "unit-test",
   "stage": "initial",
   "device": "web",
+  "content": "I need help with my donation"
 }
 ```
 
@@ -522,13 +541,12 @@ curl --location --request GET 'http://localhost:3000/health/advanced/detailed'
 curl --location --request POST 'http://localhost:3000/donor-queries' \
 --header 'Content-Type: application/json' \
 --data-raw '{
-    "sid": "session123",
     "donor": "john.doe@example.com",
     "donorId": "donor_001",
     "test": "unit-test",
     "stage": "initial",
-    "queryMode": "EMAIL",
     "device": "web",
+    "content": "I need help with my donation",
     "status": "IN_PROGRESS"
 }'
 ```
@@ -540,12 +558,10 @@ Returns the created donor query object as stored in the database.
 ```json
 {
   "id": 123,
-  "sid": "session123",
   "donor": "john.doe@example.com",
   "donorId": "donor_001",
   "test": "unit-test",
   "stage": "initial",
-  "queryMode": "EMAIL",
   "device": "web",
   "status": "IN_PROGRESS",
   "createdAt": "2023-10-10T12:00:00.000Z",
@@ -574,12 +590,10 @@ curl --location --request GET 'http://localhost:3000/donor-queries/123'
 ```json
 {
   "id": 123,
-  "sid": "session123",
   "donor": "john.doe@example.com",
   "donorId": "donor_001",
   "test": "unit-test",
   "stage": "initial",
-  "queryMode": "EMAIL",
   "device": "web",
   "status": "IN_PROGRESS",
   "messages": [
@@ -616,12 +630,10 @@ curl --location --request GET 'http://localhost:3000/donor-queries/user?donorId=
 [
   {
     "id": 123,
-    "sid": "session123",
     "donor": "john.doe@example.com",
     "donorId": "donor_001",
     "test": "unit-test",
     "stage": "initial",
-    "queryMode": "EMAIL",
     "device": "web",
     "status": "IN_PROGRESS",
     "messages": [
@@ -663,12 +675,10 @@ curl --location --request GET 'http://localhost:3000/donor-queries/user/john.doe
 [
   {
     "id": 123,
-    "sid": "session123",
     "donor": "john.doe@example.com",
     "donorId": "donor_001",
     "test": "unit-test",
     "stage": "initial",
-    "queryMode": "EMAIL",
     "device": "web",
     "status": "IN_PROGRESS",
     "messages": [
@@ -710,12 +720,10 @@ curl --location --request GET 'http://localhost:3000/donor-queries/donor/donor_0
 [
   {
     "id": 123,
-    "sid": "session123",
     "donor": "john.doe@example.com",
     "donorId": "donor_001",
     "test": "unit-test",
     "stage": "initial",
-    "queryMode": "EMAIL",
     "device": "web",
     "status": "IN_PROGRESS",
     "messages": [
@@ -742,7 +750,6 @@ curl --location --request GET 'http://localhost:3000/donor-queries/donor/donor_0
 - **Query Parameters:**
   - `test` (optional): Filter by test name
   - `stage` (optional): Filter by stage
-  - `queryMode` (optional): Filter by query mode (EMAIL, CHAT, etc.)
   - `device` (optional): Filter by device type
   - `date` (optional): Filter by creation date (format: YYYY-MM-DD)
 
@@ -764,12 +771,10 @@ curl --location --request GET 'http://localhost:3000/donor-queries/general?test=
   "data": [
     {
       "id": 124,
-      "sid": "session124",
       "donor": "jane.doe@example.com",
       "donorId": "donor_002",
       "test": "integration-test",
       "stage": "follow-up",
-      "queryMode": "CHAT",
       "device": "mobile",
       "status": "IN_PROGRESS",
       "messages": [
@@ -818,12 +823,10 @@ curl --location --request GET 'http://localhost:3000/donor-queries/transferred' 
 [
     {
         "id": 123,
-        "sid": "session123",
         "donor": "john.doe@example.com",
         "donorId": "donor_001",
         "test": "unit-test",
         "stage": "initial",
-        "queryMode": "EMAIL",
         "device": "web",
         "status": "TRANSFERRED",
         "messages": [
@@ -860,12 +863,10 @@ curl --location --request GET 'http://localhost:3000/donor-queries/filtered/stat
 [
     {
         "id": 123,
-        "sid": "session123",
         "donor": "john.doe@example.com",
         "donorId": "donor_001",
         "test": "unit-test",
         "stage": "initial",
-        "queryMode": "EMAIL",
         "device": "web",
         "status": "IN_PROGRESS",
         "messages": [
@@ -892,12 +893,10 @@ curl --location --request GET 'http://localhost:3000/donor-queries/filtered/stat
 - **Body:**
 ```json
 {
-    "sid": "updated_session123",
     "donor": "updated_john.doe@example.com",
     "donorId": "updated_donor_001",
     "test": "updated_unit-test",
     "stage": "updated_initial",
-    "queryMode": "updated_EMAIL",
     "device": "updated_web",
     "status": "updated_IN_PROGRESS"
 }
@@ -909,12 +908,10 @@ curl --location --request PATCH 'http://localhost:3000/donor-queries/123' \
 --header 'Authorization: Bearer YOUR_TOKEN' \
 --header 'Content-Type: application/json' \
 --data-raw '{
-    "sid": "updated_session123",
     "donor": "updated_john.doe@example.com",
     "donorId": "updated_donor_001",
     "test": "updated_unit-test",
     "stage": "updated_initial",
-    "queryMode": "updated_EMAIL",
     "device": "updated_web",
     "status": "updated_IN_PROGRESS"
 }'
@@ -924,12 +921,10 @@ curl --location --request PATCH 'http://localhost:3000/donor-queries/123' \
 ```json
 {
     "id": 123,
-    "sid": "updated_session123",
     "donor": "updated_john.doe@example.com",
     "donorId": "updated_donor_001",
     "test": "updated_unit-test",
     "stage": "updated_initial",
-    "queryMode": "updated_EMAIL",
     "device": "updated_web",
     "status": "updated_IN_PROGRESS",
     "createdAt": "2023-10-10T12:00:00.000Z",
@@ -966,12 +961,10 @@ curl --location --request POST 'http://localhost:3000/donor-queries/123/pending-
 ```json
 {
     "id": 123,
-    "sid": "session123",
     "donor": "john.doe@example.com",
     "donorId": "donor_001",
     "test": "unit-test",
     "stage": "initial",
-    "queryMode": "EMAIL",
     "device": "web",
     "status": "PENDING_REPLY",
     "createdAt": "2023-10-10T12:00:00.000Z",
@@ -1008,12 +1001,10 @@ curl --location --request POST 'http://localhost:3000/donor-queries/123/in-progr
 ```json
 {
     "id": 123,
-    "sid": "session123",
     "donor": "john.doe@example.com",
     "donorId": "donor_001",
     "test": "unit-test",
     "stage": "initial",
-    "queryMode": "EMAIL",
     "device": "web",
     "status": "IN_PROGRESS",
     "createdAt": "2023-10-10T12:00:00.000Z",
@@ -1040,12 +1031,10 @@ curl --location --request PATCH 'http://localhost:3000/donor-queries/123/resolve
 ```json
 {
     "id": 123,
-    "sid": "session123",
     "donor": "john.doe@example.com",
     "donorId": "donor_001",
     "test": "unit-test",
     "stage": "initial",
-    "queryMode": "EMAIL",
     "device": "web",
     "status": "RESOLVED",
     "messages": [
@@ -1088,12 +1077,10 @@ curl --location --request PATCH 'http://localhost:3000/donor-queries/123/transfe
 ```json
 {
     "id": 123,
-    "sid": "session123",
     "donor": "john.doe@example.com",
     "donorId": "donor_001",
     "test": "unit-test",
     "stage": "initial",
-    "queryMode": "EMAIL",
     "device": "web",
     "status": "TRANSFERRED",
     "messages": [
@@ -1126,12 +1113,10 @@ curl --location --request POST 'http://localhost:3000/donor-queries/123/send-rem
 ```json
 {
     "id": 123,
-    "sid": "session123",
     "donor": "john.doe@example.com",
     "donorId": "donor_001",
     "test": "unit-test",
     "stage": "initial",
-    "queryMode": "EMAIL",
     "device": "web",
     "status": "IN_PROGRESS",
     "createdAt": "2023-10-10T12:00:00.000Z",
@@ -1181,12 +1166,10 @@ curl --location --request PATCH 'http://localhost:3000/donor-queries/123/accept'
 ```json
 {
     "id": 123,
-    "sid": "session123",
     "donor": "john.doe@example.com",
     "donorId": "donor_001",
     "test": "unit-test",
     "stage": "initial",
-    "queryMode": "EMAIL",
     "device": "web",
     "status": "ACCEPTED",
     "messages": [
@@ -1255,18 +1238,16 @@ If you need these functionalities, please check the latest API documentation or 
 
 #### QueryStatus
 - `IN_PROGRESS`: Query is currently being processed
+- `PENDING_REPLY`: Query is waiting for a reply from an admin
 - `RESOLVED`: Query has been resolved
 - `TRANSFERRED`: Query has been transferred to another admin
 
-#### QueryMode
-- `TEXT`: Text-based communication
-- `HUDDLE`: Huddle-based communication
-- `VIDEO_CALL`: Video call communication
-
-#### CallMode
-- `VIDEO`: Video call
-- `AUDIO`: Audio-only call
-- `SCREEN`: Screen sharing
+#### MessageType
+- `QUERY`: Standard query message
+- `CHAT`: Chat message
+- `SYSTEM`: System-generated message
+- `CALL_STARTED`: Notification message that a call has started
+- `CALL_ENDED`: Notification message that a call has ended
 
 #### CallStatus
 - `CREATED`: Call has been created but not started
@@ -1278,6 +1259,15 @@ If you need these functionalities, please check the latest API documentation or 
 - `ACCEPTED`: Call request has been accepted
 - `REJECTED`: Call request has been rejected
 - `CANCELLED`: Call request has been cancelled
+
+#### SenderType
+- `ADMIN`: Message sent by an admin/support staff
+- `DONOR`: Message sent by a donor
+- `SYSTEM`: System-generated message
+
+#### UserRole
+- `ADMIN`: Regular admin user
+- `SUPER_ADMIN`: Super admin with additional privileges
 
 ### Models
 
@@ -1296,14 +1286,12 @@ If you need these functionalities, please check the latest API documentation or 
 
 #### DonorQuery
 - `id`: Unique identifier (auto-incremented)
-- `sid`: Session ID (unique)
 - `donor`: Donor name or email
 - `donorId`: Donor ID
 - `test`: Test name
 - `stage`: Test stage
-- `queryMode`: Query mode (TEXT, HUDDLE, VIDEO_CALL)
 - `device`: Device information
-- `status`: Query status (IN_PROGRESS, RESOLVED, TRANSFERRED)
+- `status`: Query status (IN_PROGRESS, PENDING_REPLY, RESOLVED, TRANSFERRED)
 - `fcmToken`: Firebase Cloud Messaging token for notifications (optional)
 - `createdAt`: Creation timestamp
 - `updatedAt`: Last update timestamp
@@ -1317,24 +1305,28 @@ If you need these functionalities, please check the latest API documentation or 
 - `id`: Unique identifier (auto-incremented)
 - `content`: Message content
 - `queryId`: ID of the associated donor query (optional)
-- `isFromAdmin`: Whether the message is from an admin
-- `senderId`: ID of the sender (optional)
+- `isFromAdmin`: Whether the message is from an admin (legacy field, maintained for backward compatibility)
+- `senderType`: Type of the sender (ADMIN, DONOR, SYSTEM)
+- `donorId`: ID of the donor who sent the message (when senderType is DONOR)
+- `donorName`: Name of the donor who sent the message (when senderType is DONOR)
+- `donorInfo`: Additional donor information as JSON (optional)
+- `senderId`: ID of the sender (when senderType is ADMIN)
 - `recipientId`: ID of the recipient (optional)
 - `fcmToken`: Firebase Cloud Messaging token for notifications (optional)
 - `callSessionId`: ID of the associated call session (optional)
 - `createdAt`: Creation timestamp
 - `updatedAt`: Last update timestamp
 - `messageType`: Message type (QUERY, CHAT, SYSTEM, CALL_STARTED, CALL_ENDED)
-- `callMode`: Call mode (VIDEO, AUDIO, SCREEN) (optional)
 - `roomName`: Room name for calls (optional)
 - `callRequestId`: ID of the associated call request (optional)
+- `userToken`: User token for the call (optional)
+- `adminToken`: Admin token for the call (optional)
 
 #### CallSession
 - `id`: Unique identifier (auto-incremented)
 - `queryId`: ID of the associated donor query
 - `adminId`: ID of the admin who initiated the call
 - `roomName`: Daily.co room name (unique)
-- `mode`: Call mode (VIDEO, AUDIO, SCREEN)
 - `status`: Call status (CREATED, STARTED, ENDED)
 - `startedAt`: When the call started (optional)
 - `endedAt`: When the call ended (optional)
@@ -1347,7 +1339,6 @@ If you need these functionalities, please check the latest API documentation or 
 - `id`: Unique identifier (auto-incremented)
 - `queryId`: ID of the associated donor query
 - `adminId`: ID of the admin who accepted/rejected the request (optional)
-- `mode`: Call mode (VIDEO, AUDIO, SCREEN)
 - `message`: Optional message about the call request
 - `status`: Request status (PENDING, ACCEPTED, REJECTED, CANCELLED)
 - `createdAt`: Creation timestamp
@@ -1471,7 +1462,6 @@ This information allows the frontend to redirect users to join the existing call
       "id": 123,
       "queryId": 456,
       "adminId": 789,
-      "mode": "VIDEO",
       "status": "CREATED",
       "roomName": "room-abc-xyz",
       "createdAt": "2023-04-15T12:30:45Z"
@@ -1495,7 +1485,7 @@ This information allows the frontend to redirect users to join the existing call
 **Request Body:**
 ```json
 {
-  "mode": "VIDEO" // Optional, can be "VIDEO" or "AUDIO", defaults to "VIDEO"
+  "roomName": "optional-custom-room-name" // Optional, a custom room name
 }
 ```
 
@@ -1503,13 +1493,12 @@ This information allows the frontend to redirect users to join the existing call
 ```json
 {
   "success": true,
-  "message": "VIDEO call initiated",
+  "message": "Call initiated",
   "data": {
     "callSession": {
       "id": 123,
       "queryId": 456,
       "adminId": 789,
-      "mode": "VIDEO",
       "status": "CREATED",
       "roomName": "room-abc-xyz",
       "createdAt": "2023-04-15T12:30:45Z"
@@ -1533,7 +1522,7 @@ curl --location --request POST 'http://localhost:3000/communication/call/123' \
 --header 'Authorization: Bearer YOUR_TOKEN' \
 --header 'Content-Type: application/json' \
 --data-raw '{
-  "mode": "VIDEO"
+  "roomName": "optional-custom-room-name"
 }'
 ```
 
@@ -1545,3 +1534,274 @@ curl --location --request POST 'http://localhost:3000/communication/call/123' \
 #### POST /communication/call/:queryId/request
 
 **Purpose:** Request a call session for a specific donor query. This creates a call request record and notifies the assigned admin.
+
+### Messages
+
+The Proof Concierge Backend implements an enhanced message handling system that clearly identifies message sources and properly tracks donor information.
+
+#### Message Sender Types
+
+Messages can come from three different sources, defined by the `SenderType` enum:
+
+- `ADMIN`: Messages sent by support staff/admins
+- `DONOR`: Messages sent by donors submitting queries
+- `SYSTEM`: Automated system messages (e.g., notifications about call status changes)
+
+#### Messages Management
+
+##### POST /messages/admin/:queryId
+
+**Purpose:** Create a message from an admin for a specific donor query. This endpoint is restricted to users with ADMIN or SUPER_ADMIN roles.
+
+**Request:**
+- **Method:** POST
+- **URL:** `/messages/admin/{queryId}`
+- **Headers:** Requires JWT Authentication and Admin Role
+- **Body:**
+```json
+{
+  "content": "This is a response from an admin",
+  "messageType": "QUERY"
+}
+```
+
+**cURL Example:**
+```bash
+curl --location --request POST 'http://localhost:3000/messages/admin/123' \
+--header 'Authorization: Bearer YOUR_TOKEN' \
+--header 'Content-Type: application/json' \
+--data-raw '{
+  "content": "This is a response from an admin",
+  "messageType": "QUERY"
+}'
+```
+
+**Response:**
+```json
+{
+  "status": 201,
+  "data": {
+    "id": 791,
+    "content": "This is a response from an admin",
+    "queryId": 123,
+    "senderId": 456,
+    "senderType": "ADMIN",
+    "isFromAdmin": true,
+    "messageType": "QUERY",
+    "createdAt": "2023-10-15T12:36:56.789Z",
+    "updatedAt": "2023-10-15T12:36:56.789Z"
+  }
+}
+```
+
+##### GET /messages/admin/:queryId
+
+**Purpose:** Retrieve all messages for a specific donor query. This endpoint is restricted to the admin who is assigned to the query.
+
+**Request:**
+- **Method:** GET
+- **URL:** `/messages/admin/{queryId}`
+- **Headers:** Requires JWT Authentication and Admin Role
+- **Query Parameters:**
+  - `limit` (optional): Number of messages to retrieve
+  - `offset` (optional): Pagination offset
+
+**cURL Example:**
+```bash
+curl --location --request GET 'http://localhost:3000/messages/admin/123?limit=10&offset=0' \
+--header 'Authorization: Bearer YOUR_TOKEN'
+```
+
+**Response:**
+```json
+{
+  "status": 200,
+  "data": {
+    "messages": [
+      {
+        "id": 791,
+        "content": "This is a response from an admin",
+        "queryId": 123,
+        "senderId": 456,
+        "senderType": "ADMIN",
+        "isFromAdmin": true,
+        "messageType": "QUERY",
+        "createdAt": "2023-10-15T12:36:56.789Z",
+        "updatedAt": "2023-10-15T12:36:56.789Z",
+        "sender": {
+          "id": 456,
+          "name": "Admin User",
+          "username": "admin.user",
+          "avatar": "https://example.com/avatar.jpg",
+          "role": "ADMIN",
+          "isActive": true
+        }
+      },
+      {
+        "id": 790,
+        "content": "This is a message from a donor",
+        "queryId": 123,
+        "donorId": "donor_001",
+        "donorName": "John Doe",
+        "senderType": "DONOR",
+        "isFromAdmin": false,
+        "messageType": "QUERY",
+        "createdAt": "2023-10-15T12:35:56.789Z",
+        "updatedAt": "2023-10-15T12:35:56.789Z"
+      }
+      // ... more messages
+    ],
+    "total": 2,
+    "limit": 10,
+    "offset": 0
+  }
+}
+```
+
+##### POST /messages/donor/:queryId
+
+**Purpose:** Create a message from a donor with explicit donor information.
+
+**Request:**
+- **Method:** POST
+- **URL:** `/messages/donor/{queryId}`
+- **Body:**
+```json
+{
+  "content": "This is a message from a donor",
+  "donorId": "donor_001",
+  "donorName": "John Doe",
+  "messageType": "QUERY",
+  "donorInfo": {
+    "email": "john.doe@example.com",
+    "countryCode": "US"
+  }
+}
+```
+
+**cURL Example:**
+```bash
+curl --location --request POST 'http://localhost:3000/messages/donor/123' \
+--header 'Content-Type: application/json' \
+--data-raw '{
+  "content": "This is a message from a donor",
+  "donorId": "donor_001",
+  "donorName": "John Doe",
+  "messageType": "QUERY",
+  "donorInfo": {
+    "email": "john.doe@example.com",
+    "countryCode": "US"
+  }
+}'
+```
+
+**Response:**
+```json
+{
+  "status": 201,
+  "data": {
+    "id": 790,
+    "content": "This is a message from a donor",
+    "queryId": 123,
+    "donorId": "donor_001",
+    "donorName": "John Doe",
+    "donorInfo": {
+      "email": "john.doe@example.com",
+      "countryCode": "US"
+    },
+    "senderType": "DONOR",
+    "isFromAdmin": false,
+    "messageType": "QUERY",
+    "createdAt": "2023-10-15T12:35:56.789Z",
+    "updatedAt": "2023-10-15T12:35:56.789Z"
+  }
+}
+```
+
+##### POST /messages/system/:queryId
+
+**Purpose:** Create a system message not associated with any specific user. This endpoint is restricted to users with ADMIN or SUPER_ADMIN roles.
+
+**Request:**
+- **Method:** POST
+- **URL:** `/messages/system/{queryId}`
+- **Headers:** Requires JWT Authentication and Admin Role
+- **Body:**
+```json
+{
+  "content": "This is a system notification message",
+  "messageType": "SYSTEM"
+}
+```
+
+**cURL Example:**
+```bash
+curl --location --request POST 'http://localhost:3000/messages/system/123' \
+--header 'Authorization: Bearer YOUR_TOKEN' \
+--header 'Content-Type: application/json' \
+--data-raw '{
+  "content": "This is a system notification message",
+  "messageType": "SYSTEM"
+}'
+```
+
+**Response:**
+```json
+{
+  "status": 201,
+  "data": {
+    "id": 792,
+    "content": "This is a system notification message",
+    "queryId": 123,
+    "senderType": "SYSTEM",
+    "isFromAdmin": true,
+    "messageType": "SYSTEM",
+    "createdAt": "2023-10-15T12:37:56.789Z",
+    "updatedAt": "2023-10-15T12:37:56.789Z"
+  }
+}
+```
+
+##### GET /messages/donor/:donorId
+
+**Purpose:** Get all messages from a specific donor across all queries. This endpoint is restricted to users with ADMIN or SUPER_ADMIN roles.
+
+**Request:**
+- **Method:** GET
+- **URL:** `/messages/donor/{donorId}`
+- **Headers:** Requires JWT Authentication and Admin Role
+
+**cURL Example:**
+```bash
+curl --location --request GET 'http://localhost:3000/messages/donor/donor_001' \
+--header 'Authorization: Bearer YOUR_TOKEN'
+```
+
+**Response:**
+```json
+{
+  "status": 200,
+  "data": [
+    {
+      "id": 790,
+      "content": "This is a message from a donor",
+      "queryId": 123,
+      "donorId": "donor_001",
+      "donorName": "John Doe",
+      "senderType": "DONOR",
+      "isFromAdmin": false,
+      "messageType": "QUERY",
+      "createdAt": "2023-10-15T12:35:56.789Z",
+      "updatedAt": "2023-10-15T12:35:56.789Z",
+      "query": {
+        "id": 123,
+        "donor": "John Doe",
+        "status": "IN_PROGRESS",
+        "test": "unit-test",
+        "stage": "initial"
+      }
+    }
+    // More messages from this donor
+  ]
+}
+```

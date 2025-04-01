@@ -1,20 +1,24 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { NotificationsService } from '../../notifications/notifications.service';
-import { Message, MessageType, CallMode, User, UserRole, QueryStatus } from '@prisma/client';
+import { Message, MessageType, User, UserRole, QueryStatus, SenderType } from '@prisma/client';
 import { NotificationsGateway } from '../../notifications/notifications.gateway';
+import { Socket } from 'socket.io';
 
 export interface CreateMessageDto {
   content: string;
   queryId?: number;
-  senderId?: number;
+  senderId?: number;           // Only used when senderType is ADMIN
   recipientId?: number;
   messageType?: MessageType;
-  callMode?: CallMode;
   roomName?: string;
   callSessionId?: number;
   fcmToken?: string;
-  isFromAdmin?: boolean;
+  isFromAdmin?: boolean;       // Keep for backward compatibility
+  senderType?: SenderType;     // New field for better message source tracking
+  donorId?: string;            // Store donor ID when senderType is DONOR
+  donorName?: string;          // Store donor name for better display
+  donorInfo?: any;             // Optional: additional donor info as JSON
   userToken?: string;
   adminToken?: string;
   callRequestId?: number;
@@ -27,6 +31,11 @@ export interface GetMessagesDto {
   messageType?: MessageType | MessageType[];
   limit?: number;
   offset?: number;
+}
+
+export interface GetMessagesWithDonorDto extends GetMessagesDto {
+  donorId?: string;            // Filter by donor ID
+  senderType?: SenderType;     // Filter by sender type
 }
 
 @Injectable()
@@ -46,22 +55,60 @@ export class MessagesService {
         data.messageType = data.queryId ? MessageType.QUERY : MessageType.CHAT;
       }
 
+      // Determine sender type
+      let senderType = data.senderType;
+      if (!senderType) {
+        if (data.messageType === MessageType.SYSTEM) {
+          senderType = SenderType.SYSTEM;
+        } else if (data.isFromAdmin) {
+          senderType = SenderType.ADMIN;
+        } else {
+          senderType = SenderType.DONOR;
+        }
+      }
+
+      // For donor messages, try to get the donor details if not provided
+      let donorId = data.donorId;
+      let donorName = data.donorName;
+      
+      if (senderType === SenderType.DONOR && data.queryId && (!donorId || !donorName)) {
+        const query = await this.prisma.donorQuery.findUnique({
+          where: { id: data.queryId },
+          select: { donor: true, donorId: true }
+        });
+        
+        if (query) {
+          donorId = donorId || query.donorId;
+          donorName = donorName || query.donor;
+        }
+      }
+
+      // Create the message with appropriate data based on sender type
+      const messageData: any = {
+        content: data.content,
+        queryId: data.queryId,
+        senderId: senderType === SenderType.ADMIN ? data.senderId : null,
+        recipientId: data.recipientId,
+        messageType: data.messageType,
+        roomName: data.roomName,
+        callSessionId: data.callSessionId,
+        fcmToken: data.fcmToken,
+        isFromAdmin: senderType === SenderType.ADMIN, // For backward compatibility
+        senderType,
+        userToken: data.userToken,
+        adminToken: data.adminToken,
+        callRequestId: data.callRequestId,
+      };
+
+      // Add donor fields only when the sender is a donor
+      if (senderType === SenderType.DONOR) {
+        messageData.donorId = donorId;
+        messageData.donorName = donorName;
+        messageData.donorInfo = data.donorInfo;
+      }
+
       const message = await this.prisma.message.create({
-        data: {
-          content: data.content,
-          queryId: data.queryId,
-          senderId: data.senderId,
-          recipientId: data.recipientId,
-          messageType: data.messageType,
-          callMode: data.callMode,
-          roomName: data.roomName,
-          callSessionId: data.callSessionId,
-          fcmToken: data.fcmToken,
-          isFromAdmin: data.isFromAdmin ?? false,
-          userToken: data.userToken,
-          adminToken: data.adminToken,
-          callRequestId: data.callRequestId,
-        },
+        data: messageData,
         include: {
           sender: true,
           recipient: true,
@@ -82,32 +129,41 @@ export class MessagesService {
         // Only update status if it's not already resolved or transferred
         if (query && query.status !== QueryStatus.RESOLVED && query.status !== QueryStatus.TRANSFERRED) {
           // Only update status for normal query messages, not system messages
-          const isFromAdmin = data.isFromAdmin ?? false;
-          let newStatus: QueryStatus;
+          let newStatus: QueryStatus | undefined;
           
-          if (isFromAdmin) {
+          if (senderType === SenderType.ADMIN) {
             newStatus = QueryStatus.IN_PROGRESS;
-          } else {
+          } else if (senderType === SenderType.DONOR) {
             newStatus = QueryStatus.PENDING_REPLY;
           }
 
-          // Update the query status
-          await this.prisma.donorQuery.update({
-            where: { id: data.queryId },
-            data: { status: newStatus },
-          });
-          
-          // Emit WebSocket event for status change
-          this.notificationsGateway.notifyQueryStatusChange(
-            data.queryId,
-            newStatus
-          );
+          if (newStatus) {
+            // Update the query status
+            await this.prisma.donorQuery.update({
+              where: { id: data.queryId },
+              data: { status: newStatus },
+            });
+            
+            // Emit WebSocket event for status change
+            this.notificationsGateway.notifyQueryStatusChange(
+              data.queryId,
+              newStatus
+            );
+          }
         }
       }
 
       // Send push notification if FCM token is provided
       if (data.fcmToken && this.notificationsService.isValidFcmToken(data.fcmToken)) {
-        const senderName = message.sender?.name || 'Admin';
+        // Determine sender name based on sender type
+        let senderName: string;
+        if (senderType === SenderType.ADMIN) {
+          senderName = message.sender?.name || 'Admin';
+        } else if (senderType === SenderType.DONOR) {
+          senderName = donorName || 'Donor';
+        } else {
+          senderName = 'System';
+        }
         
         await this.notificationsService.sendNotification(
           data.fcmToken,
@@ -120,6 +176,8 @@ export class MessagesService {
               type: 'message',
               messageId: message.id.toString(),
               senderId: data.senderId?.toString() || '',
+              donorId: donorId || '',
+              senderType: senderType,
               senderName,
               queryId: data.queryId?.toString() || '',
               messageType: data.messageType,
@@ -136,8 +194,8 @@ export class MessagesService {
         );
       }
 
-      // If this is a query message, also notify the assigned admin
-      if (data.queryId && data.messageType === MessageType.QUERY && !data.isFromAdmin) {
+      // If this is a query message from a donor, notify the assigned admin
+      if (data.queryId && data.messageType === MessageType.QUERY && senderType === SenderType.DONOR) {
         // Get the query details including assigned admin
         const query = await this.prisma.donorQuery.findUnique({
           where: { id: data.queryId },
@@ -148,7 +206,7 @@ export class MessagesService {
         
         // If there's an assigned admin with FCM token, send notification
         if (query?.assignedToUser?.fcmToken) {
-          const senderName = message.sender?.name || 'Donor';
+          const senderName = donorName || 'Donor';
           
           await this.notificationsService.sendNotification(
             query.assignedToUser.fcmToken,
@@ -161,6 +219,8 @@ export class MessagesService {
                 type: 'query_message',
                 messageId: message.id.toString(),
                 queryId: data.queryId.toString(),
+                donorId: donorId || '',
+                senderType: senderType,
                 timestamp: new Date().toISOString(),
               },
               android: {
@@ -175,14 +235,9 @@ export class MessagesService {
         }
       }
       
-      // Emit WebSocket event for new message
+      // Emit WebSocket event for new message with enhanced data
       if (data.queryId) {
-        this.notificationsGateway.notifyNewMessage(
-          data.queryId,
-          message.id,
-          data.senderId || 0,
-          data.isFromAdmin || false
-        );
+        this.notifyNewMessage(data.queryId, message as any);
       }
 
       return message;
@@ -192,34 +247,87 @@ export class MessagesService {
     }
   }
 
-  async findMessages(filters: GetMessagesDto) {
+  // Method to notify about new messages with enhanced information
+  private notifyNewMessage(queryId: number, message: any) {
+    // Use type assertion for complex nested properties
+    const sender = message.senderType === SenderType.ADMIN && message.senderId ? {
+      id: message.senderId,
+      name: (message.sender?.name) || 'Admin'
+    } : message.senderType === SenderType.DONOR ? {
+      donorId: message.donorId,
+      name: message.donorName || 'Donor'
+    } : {
+      system: true
+    };
+
+    const formattedMessage = {
+      id: message.id,
+      content: message.content,
+      queryId: message.queryId,
+      messageType: message.messageType,
+      senderType: message.senderType,
+      sender,
+      createdAt: message.createdAt,
+      roomName: message.roomName,
+      callSessionId: message.callSessionId,
+      // Add sender identifiers to help clients filter their own messages
+      senderIdentifiers: {
+        senderId: message.senderId || null,
+        donorId: message.donorId || null
+      }
+    };
+
+    // Broadcast to all clients in the query room
+    // The clients will filter out their own messages based on senderId or donorId
+    this.notificationsGateway.server.to(`query-${queryId}`).emit('newMessage', formattedMessage);
+    
+    // Call the legacy method for backward compatibility
+    this.notificationsGateway.notifyNewMessage(
+      queryId,
+      message.id,
+      message.senderId || 0,
+      message.isFromAdmin
+    );
+  }
+
+  async findMessages(filters: GetMessagesWithDonorDto) {
     try {
-      const { queryId, senderId, recipientId, messageType } = filters;
+      const { queryId, senderId, recipientId, messageType, donorId, senderType } = filters;
       const limit = typeof filters.limit === 'string' ? parseInt(filters.limit, 10) : (filters.limit || 50);
       const offset = typeof filters.offset === 'string' ? parseInt(filters.offset, 10) : (filters.offset || 0);
       
       // Build the where clause based on provided filters
       const where: any = {};
       
-      if (queryId) {
+      if (queryId !== undefined) {
         where.queryId = queryId;
       }
       
-      if (senderId) {
+      if (senderId !== undefined) {
         where.senderId = senderId;
       }
       
-      if (recipientId) {
+      if (recipientId !== undefined) {
         where.recipientId = recipientId;
       }
+      
+      if (messageType !== undefined) {
+        if (Array.isArray(messageType)) {
+          where.messageType = { in: messageType };
+        } else {
+          where.messageType = messageType;
+        }
+      }
 
-      if (messageType) {
-        where.messageType = Array.isArray(messageType) 
-          ? { in: messageType }
-          : messageType;
+      // Add donor and sender type filters
+      if (donorId !== undefined) {
+        where.donorId = donorId;
       }
       
-      // Get messages from the database
+      if (senderType !== undefined) {
+        where.senderType = senderType;
+      }
+      
       const messages = await this.prisma.message.findMany({
         where,
         select: {
@@ -229,10 +337,12 @@ export class MessagesService {
           senderId: true,
           recipientId: true,
           messageType: true,
-          callMode: true,
+          isFromAdmin: true,
+          senderType: true,    // New field
+          donorId: true,       // New field
+          donorName: true,     // New field
           roomName: true,
           callSessionId: true,
-          isFromAdmin: true,
           createdAt: true,
           updatedAt: true,
           sender: {
@@ -275,7 +385,6 @@ export class MessagesService {
           callSession: {
             select: {
               id: true,
-              mode: true,
               status: true,
               roomName: true,
               userToken: true,
@@ -292,43 +401,9 @@ export class MessagesService {
         skip: offset,
       });
       
-      // Transform messages to ensure proper formatting and explicit admin status
-      const transformedMessages = messages.map(msg => {
-        const result = {
-          ...msg,
-          isFromAdmin: msg.isFromAdmin || false, // Ensure boolean value
-        };
-        
-        // Add sender information if available
-        if (msg.senderId) {
-          result.sender = {
-            id: msg.senderId,
-            name: msg.sender?.name || '',
-            username: msg.sender?.username || '',
-            role: msg.sender?.role || UserRole.ADMIN,
-            avatar: msg.sender?.avatar || null,
-            isActive: msg.sender?.isActive || true
-          };
-        }
-        
-        // Add recipient information if available
-        if (msg.recipientId) {
-          result.recipient = {
-            id: msg.recipientId,
-            name: msg.recipient?.name || '',
-            username: msg.recipient?.username || '',
-            role: msg.recipient?.role || UserRole.ADMIN,
-            avatar: msg.recipient?.avatar || null,
-            isActive: msg.recipient?.isActive || true
-          };
-        }
-        
-        return result;
-      });
-      
-      return transformedMessages;
+      return messages;
     } catch (error) {
-      this.logger.error(`Error getting messages: ${error.message}`, error.stack);
+      this.logger.error(`Error finding messages: ${error.message}`, error.stack);
       throw error;
     }
   }
@@ -416,5 +491,30 @@ export class MessagesService {
       this.logger.error(`Error validating admin access: ${error.message}`, error.stack);
       throw error;
     }
+  }
+
+  /**
+   * Find all messages from a specific donor across all queries
+   */
+  async findMessagesByDonor(donorId: string) {
+    return this.prisma.message.findMany({
+      where: {
+        donorId,
+      },
+      include: {
+        query: {
+          select: {
+            id: true,
+            status: true,
+            donor: true,
+            test: true,
+            stage: true
+          }
+        }
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
   }
 } 
