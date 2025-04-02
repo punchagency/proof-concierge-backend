@@ -183,6 +183,9 @@ export class DonorQueriesService {
         where: { 
           donorId 
         },
+        orderBy: {
+          createdAt: 'desc', // Sort from newest to oldest
+        },
         include: {
           resolvedByUser: {
             select: {
@@ -263,7 +266,7 @@ export class DonorQueriesService {
     await this.messagesService.create({
       content: `Query #${id} has been resolved by ${user.name}`,
       queryId: id,
-      senderId: resolvedById,
+      senderId: resolvedById ?? undefined,
       messageType: MessageType.SYSTEM,
       isFromAdmin: true,
     });
@@ -370,7 +373,7 @@ export class DonorQueriesService {
     await this.messagesService.create({
       content: `Query #${id} has been transferred to ${transferredTo}${noteMessage}`,
       queryId: id,
-      senderId: transferredToUserId,
+      senderId: transferredToUserId ?? undefined,
       messageType: MessageType.SYSTEM,
       isFromAdmin: true,
     });
@@ -432,7 +435,7 @@ export class DonorQueriesService {
           queryId: query.id,
           messageType: MessageType.SYSTEM,
           content: message || `Reminder for query ${query.id} - ${query.donor}`,
-          senderId: query.transferredToUserId,
+          senderId: query.transferredToUserId ?? undefined,
         },
       });
     }
@@ -659,14 +662,12 @@ export class DonorQueriesService {
       });
 
       // Create a system message for the query acceptance
-      await this.prisma.message.create({
-        data: {
-          queryId: query.id,
-          messageType: MessageType.SYSTEM,
-          content: `Query #${query.id} has been accepted by ${user.name}`,
-          senderId: userId,
-          isFromAdmin: true,
-        },
+      await this.messagesService.create({
+        content: `Donor query #${updatedQuery.id} accepted by ${user.name}`,
+        queryId: updatedQuery.id,
+        senderId: userId ?? undefined,
+        messageType: MessageType.SYSTEM,
+        isFromAdmin: true,
       });
 
       // Send real-time WebSocket notification
@@ -757,6 +758,33 @@ export class DonorQueriesService {
       return updatedQuery;
     } catch (error) {
       this.logger.error('Error closing query by donor:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create a new query and start a direct call in one step
+   */
+  async createQueryAndStartCall(createDonorQueryDto: CreateDonorQueryDto) {
+    try {
+      // First create the query
+      const query = await this.create(createDonorQueryDto);
+      
+      // Now start a direct call for this query
+      const callResult = await this.callsService.startDirectCall(query.id);
+      
+      // Return combined result with query and call details
+      return {
+        query,
+        call: {
+          callSession: callResult.callSession,
+          room: callResult.room,
+          tokens: callResult.tokens,
+          roomUrl: `https://${this.callsService.getDomain()}/${callResult.room.name}`
+        }
+      };
+    } catch (error) {
+      this.logger.error('Error creating query and starting call:', error);
       throw error;
     }
   }

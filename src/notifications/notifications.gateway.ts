@@ -333,4 +333,34 @@ export class NotificationsGateway implements OnGatewayConnection, OnGatewayDisco
     
     this.logger.log(`Emitted callStarted event. Query ID: ${queryId}, Call ID: ${callSession.id}`);
   }
+
+  /**
+   * Notify about direct call started by donor
+   */
+  notifyDirectCallStarted(queryId: number, callSession: any) {
+    // Notify the query room
+    this.server.to(`query-${queryId}`).emit('directCallStarted', {
+      queryId,
+      callSession,
+      timestamp: new Date().toISOString(),
+    });
+    
+    // Notify the admin room for dashboard updates
+    this.server.to('admins').emit('directCallStarted', {
+      queryId,
+      callSession,
+      timestamp: new Date().toISOString(),
+    });
+    
+    // If we know the assigned admin, notify them specifically
+    if (callSession.adminId) {
+      this.server.to(`user-${callSession.adminId}`).emit('directCallStarted', {
+        queryId,
+        callSession,
+        timestamp: new Date().toISOString(),
+      });
+    }
+    
+    this.logger.log(`Emitted directCallStarted event. Query ID: ${queryId}, Call ID: ${callSession.id}`);
+  }
 } 

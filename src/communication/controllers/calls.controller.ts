@@ -233,6 +233,77 @@ export class CallsController {
     }
   }
 
+  @Post(':queryId/direct-call')
+  @Public()
+  async startDirectCall(
+    @Param('queryId') queryId: string,
+  ) {
+    try {
+      const result = await this.callsService.startDirectCall(+queryId);
+
+      // Send WebSocket notification about the direct call being started
+      this.notificationsGateway.notifyDirectCallStarted(
+        +queryId,
+        result.callSession
+      );
+
+      return {
+        success: true,
+        message: `Call started successfully`,
+        data: result,
+      };
+    } catch (error) {
+      this.logger.error('Error starting direct call:', error);
+      throw new HttpException(
+        error.message || 'Failed to start direct call',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  @Get(':queryId/active-call')
+  @Public()
+  async getActiveCall(
+    @Param('queryId') queryId: string,
+  ) {
+    try {
+      const calls = await this.callsService.getCallsForQuery(+queryId);
+      
+      // Filter for active calls only
+      const activeCalls = calls.filter(call => 
+        call.status === CallStatus.CREATED || call.status === CallStatus.STARTED
+      );
+      
+      if (activeCalls.length === 0) {
+        return {
+          success: false,
+          message: 'No active call found for this query',
+          data: null,
+        };
+      }
+      
+      // Return the most recent active call
+      const activeCall = activeCalls[0];
+      const roomUrl = `https://${this.callsService.getDomain()}/${activeCall.roomName}`;
+      
+      return {
+        success: true,
+        message: 'Active call found',
+        data: {
+          callSession: activeCall,
+          roomUrl,
+          userToken: activeCall.userToken,
+        },
+      };
+    } catch (error) {
+      this.logger.error('Error getting active call:', error);
+      throw new HttpException(
+        error.message || 'Failed to get active call',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
   @Get(':queryId/requests')

@@ -90,7 +90,7 @@ model Message {
 model CallSession {
   id         Int        @id @default(autoincrement())
   queryId    Int
-  adminId    Int
+  adminId    Int?
   roomName   String     @unique
   startedAt  DateTime?
   endedAt    DateTime?
@@ -99,7 +99,7 @@ model CallSession {
   status     CallStatus
   adminToken String?
   userToken  String?
-  admin      User       @relation(fields: [adminId], references: [id])
+  admin      User?      @relation(fields: [adminId], references: [id])
   query      DonorQuery @relation(fields: [queryId], references: [id])
   messages   Message[]
 

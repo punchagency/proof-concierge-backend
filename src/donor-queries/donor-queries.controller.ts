@@ -54,6 +54,27 @@ export class DonorQueriesController {
     }
   }
 
+  @Post('start-call')
+  @Public()
+  @LogActivity('Created a new donor query with direct call')
+  async createQueryAndStartCall(@Body() createDonorQueryDto: CreateDonorQueryDto) {
+    try {
+      const result = await this.donorQueriesService.createQueryAndStartCall(createDonorQueryDto);
+      return {
+        status: HttpStatus.CREATED,
+        data: result,
+      };
+    } catch (error) {
+      throw new HttpException(
+        {
+          status: HttpStatus.BAD_REQUEST,
+          message: error.message || 'Failed to create query and start call',
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
   @Get()
   @Roles('SUPER_ADMIN', 'ADMIN')
   @LogActivity('Viewed all donor queries')

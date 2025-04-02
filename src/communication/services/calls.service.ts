@@ -9,6 +9,7 @@ import {
   MessageType,
   Prisma,
   CallSession,
+  SenderType,
 } from '@prisma/client';
 import { MessagesService } from './messages.service';
 import { NotificationsService } from '../../notifications/notifications.service';
@@ -263,7 +264,7 @@ export class CallsService implements OnModuleInit {
           // Fallback: Create a new message if no existing one is found
           await this.messagesService.create({
             queryId: callSession.queryId,
-            senderId: adminId,
+            senderId: adminId ?? undefined,
             content: 'Call ended',
             messageType: MessageType.CALL_ENDED,
             roomName,
@@ -298,7 +299,7 @@ export class CallsService implements OnModuleInit {
       // Create a message when admin joins the call
       await this.messagesService.create({
         queryId: callSession.queryId,
-        senderId: callSession.adminId,
+        senderId: callSession.adminId ?? undefined,
         content: 'Admin joined the call',
         messageType: MessageType.SYSTEM,
         roomName,
@@ -539,6 +540,158 @@ export class CallsService implements OnModuleInit {
     }
   }
 
+  async startDirectCall(queryId: number) {
+    try {
+      // Get the query to ensure it exists and get donor details
+      const query = await this.prisma.donorQuery.findUnique({
+        where: { id: queryId },
+        include: {
+          assignedToUser: true,
+        },
+      });
+
+      if (!query) {
+        throw new Error('Query not found');
+      }
+
+      // Get admin ID if one is assigned, but don't require it
+      let adminId: number | null = null;
+      if (query.assignedToUser) {
+        adminId = query.assignedToUser.id;
+      }
+
+      // Check if there are any active calls for this query
+      const existingActiveCalls = await this.prisma.callSession.findMany({
+        where: {
+          queryId,
+          status: {
+            in: [CallStatus.CREATED, CallStatus.STARTED],
+          },
+        },
+      });
+
+      // If there's an active call, return it instead of creating a new one
+      if (existingActiveCalls.length > 0) {
+        const activeCall = existingActiveCalls[0];
+        return {
+          callSession: activeCall,
+          room: {
+            name: activeCall.roomName,
+          },
+          tokens: {
+            admin: activeCall.adminToken,
+            user: activeCall.userToken,
+          },
+          notificationData: {
+            fcmToken: query.fcmToken,
+            adminName: query.assignedToUser?.name
+          }
+        };
+      }
+
+      // Create a room in Daily.co
+      const room = await this.createPrivateRoom();
+
+      // Generate tokens
+      const adminToken = await this.createMeetingToken(
+        room.name,
+        true,
+      );
+      const userToken = await this.createMeetingToken(
+        room.name,
+        false,
+      );
+
+      // Create call session in database with tokens - handle case where no admin is assigned yet
+      let callSessionData: any = {
+        roomName: room.name,
+        status: CallStatus.CREATED,
+        userToken: userToken,
+        adminToken: adminToken,
+        query: {
+          connect: { id: queryId },
+        }
+      };
+      
+      // Only connect to admin if one is assigned
+      if (adminId) {
+        callSessionData.admin = {
+          connect: { id: adminId }
+        };
+      }
+      
+      let callSession = await this.prisma.callSession.create({
+        data: callSessionData,
+        include: {
+          query: true,
+          admin: true,
+        },
+      });
+
+      // Create a call started message in the same format as admin-initiated calls
+      await this.messagesService.create({
+        content: `Call started by donor`,
+        queryId,
+        messageType: MessageType.CALL_STARTED, // Use CALL_STARTED instead of SYSTEM
+        roomName: room.name,
+        callSessionId: callSession.id,
+        userToken: userToken,
+        adminToken: adminToken,
+        senderType: SenderType.DONOR, // Specify that a donor started this call
+      });
+
+      // Send notification to the admin if FCM token is available
+      if (query.assignedToUser && query.assignedToUser.fcmToken) {
+        await this.notificationsService.sendNotification(
+          query.assignedToUser.fcmToken,
+          {
+            notification: {
+              title: 'Direct Call Started',
+              body: `Donor started a call for query #${queryId}`,
+            },
+            data: {
+              type: 'direct_call_started',
+              queryId: queryId.toString(),
+              callSessionId: callSession.id.toString(),
+              timestamp: new Date().toISOString(),
+            },
+            android: {
+              priority: 'high',
+              notification: {
+                channelId: 'calls',
+                priority: 'high',
+              },
+            },
+          },
+        );
+      }
+      
+      // Send email notification to the assigned admin
+      if (adminId) {
+        await this.emailService.sendDirectCallStartedNotification(
+          queryId,
+          adminId,
+        );
+      }
+
+      return {
+        callSession,
+        room,
+        tokens: {
+          admin: adminToken,
+          user: userToken,
+        },
+        notificationData: {
+          fcmToken: query.fcmToken,
+          adminName: query.assignedToUser?.name
+        }
+      };
+    } catch (error) {
+      this.logger.error('Error starting direct call:', error);
+      throw error;
+    }
+  }
+
   async validateAdminAccess(
     queryId: number,
     adminId: number,
@@ -731,13 +884,13 @@ export class CallsService implements OnModuleInit {
     return this.messagesService.create({
       content,
       queryId,
-      senderId: adminId,
+      senderId: adminId ?? undefined,
       messageType: MessageType.CALL_STARTED,
       roomName: callSession.roomName,
       callSessionId: callSession.id,
-      userToken: callSession.userToken || undefined, // Handle null case
-      adminToken: callSession.adminToken || undefined, // Handle null case
-      isFromAdmin: true, // Set this to true for call-started messages
+      userToken: callSession.userToken || undefined,
+      adminToken: callSession.adminToken || undefined,
+      isFromAdmin: true,
     });
   }
 
@@ -970,7 +1123,7 @@ export class CallsService implements OnModuleInit {
             // Fallback: Create a new message if no existing one is found
             await this.messagesService.create({
               queryId: call.queryId,
-              senderId: call.adminId,
+              senderId: call.adminId ?? undefined,
               content: 'Call expired',
               messageType: MessageType.CALL_ENDED,
               roomName: call.roomName,
@@ -1049,7 +1202,7 @@ export class CallsService implements OnModuleInit {
             // Create message about the call exceeding standard duration
             await this.messagesService.create({
               queryId: call.queryId,
-              senderId: call.adminId,
+              senderId: call.adminId ?? undefined,
               content:
                 'This call has exceeded the standard meeting duration. You can end it at any time.',
               messageType: MessageType.SYSTEM,
@@ -1123,7 +1276,7 @@ export class CallsService implements OnModuleInit {
           // Fallback: Create a new message if no existing one is found
           await this.messagesService.create({
             queryId: call.queryId,
-            senderId: call.adminId,
+            senderId: call.adminId ?? undefined,
             content: 'Call ended (query was resolved)',
             messageType: MessageType.CALL_ENDED,
             roomName: call.roomName,

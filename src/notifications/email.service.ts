@@ -318,4 +318,88 @@ export class EmailService {
       return false;
     }
   }
+
+  /**
+   * Send email notification about a direct call started by a donor to the assigned admin
+   * @param queryId Query ID
+   * @param adminId Assigned admin ID
+   */
+  async sendDirectCallStartedNotification(
+    queryId: number,
+    adminId: number,
+  ): Promise<boolean> {
+    if (!this.isInitialized) {
+      this.logger.warn('SendGrid not initialized. Skipping email notification.');
+      return false;
+    }
+
+    try {
+      this.logger.log(`Preparing to send direct call notification for Query #${queryId} to Admin #${adminId}`);
+      
+      // Find the assigned admin
+      const admin = await this.prisma.user.findUnique({
+        where: {
+          id: adminId,
+        },
+        select: {
+          email: true,
+          name: true,
+        },
+      });
+
+      if (!admin?.email) {
+        this.logger.warn(`Admin with ID ${adminId} not found or has no email. Skipping notification.`);
+        return false;
+      }
+
+      const fromEmail = this.configService.get<string>('SENDGRID_FROM_EMAIL');
+      if (!fromEmail) {
+        this.logger.warn('Sender email not configured. Skipping notification.');
+        return false;
+      }
+
+      // Get query details for more context
+      const query = await this.prisma.donorQuery.findUnique({
+        where: { id: queryId },
+        select: {
+          donor: true,
+          donorId: true,
+          test: true,
+        },
+      });
+
+      if (!query) {
+        this.logger.warn(`Query with ID ${queryId} not found. Skipping notification.`);
+        return false;
+      }
+
+      const queryLink = `${this.frontendUrl}/donor-queries/${queryId}`;
+
+      // Create email content
+      const msg = {
+        to: admin.email,
+        from: fromEmail,
+        subject: `Direct Call Started: Query #${queryId} from ${query.donor}`,
+        html: `
+          <h2>Direct Call Started by Donor</h2>
+          <p>A donor has started a direct call for:</p>
+          <p><strong>Query ID:</strong> ${queryId}</p>
+          <p><strong>Donor:</strong> ${query.donor}</p>
+          ${query.donorId ? `<p><strong>Donor ID:</strong> ${query.donorId}</p>` : ''}
+          <p><strong>Test:</strong> ${query.test}</p>
+          <p><a href="${queryLink}" style="background-color: #4CAF50; color: white; padding: 10px 15px; text-decoration: none; border-radius: 5px; margin-top: 15px; display: inline-block;">Join Call</a></p>
+        `,
+      };
+
+      this.logger.log(`Sending direct call notification email to ${admin.email} (${admin.name || 'Unknown Admin'}) for Query #${queryId}`);
+      
+      // Send the email
+      await sgMail.send(msg);
+      this.logger.log(`✅ Direct call notification email successfully sent to ${admin.email} for Query #${queryId}`);
+      return true;
+    } catch (error) {
+      this.logger.error(`❌ Error sending direct call notification for Query #${queryId}: ${error.message}`, error.stack);
+      return false;
+    }
+  }
 } 

@@ -29,6 +29,7 @@ This document provides a detailed guide to all the API endpoints in the Proof Co
     - [GET /donor-queries/donor/:donorId](#get-donor-queriesdonordonorid)
     - [GET /donor-queries/general](#get-donor-queriesgeneral)
     - [POST /donor-queries/:id/donor-close](#post-donor-queriesiddonor-close)
+    - [POST /donor-queries/start-call](#post-donor-queriesstart-call)
   - [Messages](#messages)
     - [POST /messages](#post-messages)
     - [GET /messages](#get-messages)
@@ -44,6 +45,8 @@ This document provides a detailed guide to all the API endpoints in the Proof Co
     - [POST /communication/call/:queryId/accept-request](#post-communicationcallqueryidaccept-request)
     - [POST /communication/call/:queryId/accept-request/:requestId](#post-communicationcallqueryidaccept-requestrequestid)
     - [POST /communication/call/:queryId/reject-request/:requestId](#post-communicationcallqueryidreject-requestrequestid)
+    - [POST /communication/call/:queryId/direct-call](#post-communicationcallqueryiddirect-call)
+    - [GET /communication/call/:queryId/active-call](#get-communicationcallqueryidactive-call)
 - [Protected Endpoints (Admin/Support Staff)](#protected-endpoints-adminsupport-staff)
   - [User Management](#user-management)
     - [GET /users/me](#get-usersme)
@@ -803,6 +806,88 @@ curl --location --request GET 'http://localhost:3000/donor-queries/general?test=
 {
   "donorId": "donor_001"
 }
+```
+
+#### POST /donor-queries/start-call
+
+**Purpose:** Create a new donor query and immediately start a direct call, returning both the query details and call joining information.
+
+**Request:**
+- **Method:** POST
+- **URL:** `/donor-queries/start-call`
+- **Auth Required:** No (Public endpoint)
+- **Body:**
+```json
+{
+  "donor": "john.doe@example.com",
+  "donorId": "donor_001",
+  "test": "unit-test",
+  "stage": "initial",
+  "device": "web",
+  "content": "I need help with my donation and want to start a call immediately"
+}
+```
+
+**cURL Example:**
+```bash
+curl --location --request POST 'http://localhost:3000/donor-queries/start-call' \
+--header 'Content-Type: application/json' \
+--data-raw '{
+  "donor": "john.doe@example.com",
+  "donorId": "donor_001",
+  "test": "unit-test",
+  "stage": "initial",
+  "device": "web",
+  "content": "I need help with my donation and want to start a call immediately"
+}'
+```
+
+**Response:**
+```json
+{
+  "status": 201,
+  "data": {
+    "query": {
+      "id": 123,
+      "donor": "john.doe@example.com",
+      "donorId": "donor_001",
+      "test": "unit-test",
+      "stage": "initial",
+      "device": "web",
+      "status": "IN_PROGRESS",
+      "createdAt": "2023-10-10T12:00:00.000Z",
+      "updatedAt": "2023-10-10T12:00:00.000Z"
+    },
+    "call": {
+      "callSession": {
+        "id": 456,
+        "queryId": 123,
+        "adminId": null,
+        "roomName": "room-abc-xyz",
+        "status": "CREATED",
+        "userToken": "user_token_for_authentication",
+        "adminToken": "admin_token_for_authentication",
+        "createdAt": "2023-10-10T12:00:01.000Z"
+      },
+      "room": {
+        "name": "room-abc-xyz"
+      },
+      "tokens": {
+        "admin": "admin_token_for_authentication",
+        "user": "user_token_for_authentication"
+      },
+      "roomUrl": "https://domain.daily.co/room-abc-xyz"
+    }
+  }
+}
+```
+
+**Notes:**
+- This endpoint creates a new query and immediately starts a call in one step
+- It returns both the query details and all the information needed to join the call
+- The donor can use the `userToken` and `roomUrl` to join the call directly
+- If there is an admin assigned to the query, they will receive a notification about the call
+- The call can be joined even if no admin has been assigned yet
 
 #### GET /donor-queries/transferred
 
@@ -1534,6 +1619,115 @@ curl --location --request POST 'http://localhost:3000/communication/call/123' \
 #### POST /communication/call/:queryId/request
 
 **Purpose:** Request a call session for a specific donor query. This creates a call request record and notifies the assigned admin.
+
+#### POST /communication/call/:queryId/direct-call
+
+**Purpose:** Start a direct call for a specific donor query without requiring an admin to accept a request first. This endpoint is public and allows donors to initiate calls directly.
+
+**Request:**
+- **Method:** POST
+- **URL:** `/communication/call/{queryId}/direct-call`
+- **Auth Required:** No (Public endpoint)
+
+**Success Response:**
+```json
+{
+  "success": true,
+  "message": "Call started successfully",
+  "data": {
+    "callSession": {
+      "id": 123,
+      "queryId": 456,
+      "adminId": 789,
+      "status": "CREATED",
+      "roomName": "room-abc-xyz",
+      "userToken": "user_token_for_authentication",
+      "adminToken": "admin_token_for_authentication",
+      "createdAt": "2023-04-15T12:30:45Z"
+    },
+    "room": {
+      "name": "room-abc-xyz"
+    },
+    "tokens": {
+      "admin": "admin_token_for_authentication",
+      "user": "user_token_for_authentication"
+    },
+    "notificationData": {
+      "fcmToken": "fcm-token-for-notifications",
+      "adminName": "Admin Name"
+    }
+  }
+}
+```
+
+**Error Responses:**
+- **404 Not Found** - Query not found
+- **400 Bad Request** - No admin assigned to the query
+- **500 Internal Server Error** - Failed to start call
+
+**Usage Example:**
+```bash
+curl --location --request POST 'http://localhost:3000/communication/call/123/direct-call'
+```
+
+**Notes:**
+- This endpoint creates a new call session and generates tokens for both the admin and the donor.
+- If a call is already active for the query, it returns the existing call details instead of creating a new one.
+- It sends notifications (WebSocket, FCM, and email) to the assigned admin.
+- WebSocket events are emitted with the `directCallStarted` event.
+
+#### GET /communication/call/:queryId/active-call
+
+**Purpose:** Get details of an active call for a specific donor query. This endpoint allows donors to check if there's an ongoing call they can join.
+
+**Request:**
+- **Method:** GET
+- **URL:** `/communication/call/{queryId}/active-call`
+- **Auth Required:** No (Public endpoint)
+
+**Success Response:**
+```json
+{
+  "success": true,
+  "message": "Active call found",
+  "data": {
+    "callSession": {
+      "id": 123,
+      "queryId": 456,
+      "adminId": 789,
+      "status": "CREATED", 
+      "roomName": "room-abc-xyz",
+      "userToken": "user_token_for_authentication",
+      "adminToken": "admin_token_for_authentication",
+      "createdAt": "2023-04-15T12:30:45Z"
+    },
+    "roomUrl": "https://domain.daily.co/room-abc-xyz",
+    "userToken": "user_token_for_authentication"
+  }
+}
+```
+
+**Response (No Active Call):**
+```json
+{
+  "success": false,
+  "message": "No active call found for this query",
+  "data": null
+}
+```
+
+**Error Responses:**
+- **500 Internal Server Error** - Failed to get active call
+
+**Usage Example:**
+```bash
+curl --location --request GET 'http://localhost:3000/communication/call/123/active-call'
+```
+
+**Notes:**
+- This endpoint returns details of any active call (status "CREATED" or "STARTED") for the specified query.
+- If multiple active calls exist (which should not happen), it returns the most recent one.
+- The response includes the room URL and user token needed to join the call.
 
 ### Messages
 
