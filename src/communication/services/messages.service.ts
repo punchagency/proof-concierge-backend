@@ -18,7 +18,6 @@ export interface CreateMessageDto {
   senderType?: SenderType;     // New field for better message source tracking
   donorId?: string;            // Store donor ID when senderType is DONOR
   donorName?: string;          // Store donor name for better display
-  donorInfo?: any;             // Optional: additional donor info as JSON
   userToken?: string;
   adminToken?: string;
   callRequestId?: number;
@@ -104,7 +103,6 @@ export class MessagesService {
       if (senderType === SenderType.DONOR) {
         messageData.donorId = donorId;
         messageData.donorName = donorName;
-        messageData.donorInfo = data.donorInfo;
       }
 
       const message = await this.prisma.message.create({

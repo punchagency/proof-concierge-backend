@@ -37,6 +37,7 @@ This document provides a detailed guide to all the API endpoints in the Proof Co
     - [GET /messages/:queryId](#get-messagesqueryid)
     - [GET /messages/between/:userId1/:userId2](#get-messagesbetweenuserid1userid2)
     - [Enhanced Message Handling System](#enhanced-message-handling-system)
+    - [POST /messages/donor/:queryId](#post-messagesdonorqueryid)
   - [Communication](#communication)
     - [GET /communication/calls/:queryId](#get-communicationcallsqueryid)
     - [POST /communication/call/:queryId](#post-communicationcallqueryid)
@@ -1268,264 +1269,58 @@ curl --location --request PATCH 'http://localhost:3000/donor-queries/123/accept'
 }
 ```
 
-### Communication Management
+### Messages
 
-#### DELETE /communication/call/:roomName
+The Proof Concierge Backend implements an enhanced message handling system that clearly identifies message sources and properly tracks donor information.
 
-**Purpose:** Delete a specific room by its name. This is typically used for cleanup or when a call needs to be forcefully terminated.
+#### Enhanced Message Handling System
+
+#### POST /messages/donor/:queryId
+
+**Purpose:** Create a message from a donor with explicit donor information.
 
 **Request:**
-- **Method:** DELETE
-- **URL:** `/communication/call/{roomName}`
-- **Headers:** Requires JWT Authentication and Admin Role
+- **Method:** POST
+- **URL:** `/messages/donor/{queryId}`
+- **Body:**
+```json
+{
+  "content": "This is a message from a donor",
+  "donorId": "donor_001",
+  "messageType": "QUERY"
+}
+```
 
 **cURL Example:**
 ```bash
-curl --location --request DELETE 'http://localhost:3000/communication/call/room_xyz' \
---header 'Authorization: Bearer YOUR_TOKEN'
+curl --location --request POST 'http://localhost:3000/messages/donor/123' \
+--header 'Content-Type: application/json' \
+--data-raw '{
+  "content": "This is a message from a donor",
+  "donorId": "donor_001",
+  "messageType": "QUERY"
+}'
 ```
 
 **Response:**
 ```json
 {
-    "status": 200,
-    "message": "Room room_xyz deleted successfully"
-}
-```
-
-**Error Response:**
-```json
-{
-    "statusCode": 500,
-    "message": "Failed to delete room"
-}
-```
-
-**Notes:**
-- This endpoint deletes the room from the Daily.co API but does not update any call session records in the database
-- For proper call termination that updates database records, use the POST /communication/call/:roomName/end endpoint instead
-- This endpoint is primarily used for administrative cleanup
-
----
-
-## Note on Additional Endpoints
-
-The following endpoints are listed in the Table of Contents but may not be fully implemented in the current version of the API:
-
-1. `DELETE /communication/rooms` - For bulk deletion of communication rooms
-2. `GET /communication/rooms` - For retrieving a list of all active communication rooms
-
-If you need these functionalities, please check the latest API documentation or contact the development team.
-
-## Database Schema
-
-### Enums
-
-#### QueryStatus
-- `IN_PROGRESS`: Query is currently being processed
-- `PENDING_REPLY`: Query is waiting for a reply from an admin
-- `RESOLVED`: Query has been resolved
-- `TRANSFERRED`: Query has been transferred to another admin
-
-#### MessageType
-- `QUERY`: Standard query message
-- `CHAT`: Chat message
-- `SYSTEM`: System-generated message
-- `CALL_STARTED`: Notification message that a call has started
-- `CALL_ENDED`: Notification message that a call has ended
-
-#### CallStatus
-- `CREATED`: Call has been created but not started
-- `STARTED`: Call is in progress
-- `ENDED`: Call has ended
-
-#### CallRequestStatus
-- `PENDING`: Call request is pending acceptance
-- `ACCEPTED`: Call request has been accepted
-- `REJECTED`: Call request has been rejected
-- `CANCELLED`: Call request has been cancelled
-
-#### SenderType
-- `ADMIN`: Message sent by an admin/support staff
-- `DONOR`: Message sent by a donor
-- `SYSTEM`: System-generated message
-
-#### UserRole
-- `ADMIN`: Regular admin user
-- `SUPER_ADMIN`: Super admin with additional privileges
-
-### Models
-
-#### User
-- `id`: Unique identifier (auto-incremented)
-- `username`: Unique username
-- `password`: Hashed password
-- `name`: Full name
-- `email`: Email address (optional)
-- `role`: User role (ADMIN, SUPER_ADMIN)
-- `avatar`: Profile picture (optional)
-- `isActive`: Whether the user is active
-- `fcmToken`: Firebase Cloud Messaging token for notifications (optional)
-- `createdAt`: Creation timestamp
-- `updatedAt`: Last update timestamp
-
-#### DonorQuery
-- `id`: Unique identifier (auto-incremented)
-- `donor`: Donor name or email
-- `donorId`: Donor ID
-- `test`: Test name
-- `stage`: Test stage
-- `device`: Device information
-- `status`: Query status (IN_PROGRESS, PENDING_REPLY, RESOLVED, TRANSFERRED)
-- `fcmToken`: Firebase Cloud Messaging token for notifications (optional)
-- `createdAt`: Creation timestamp
-- `updatedAt`: Last update timestamp
-- `transferredTo`: Name of the admin the query was transferred to (optional)
-- `transferredToUserId`: ID of the admin the query was transferred to (optional)
-- `resolvedById`: ID of the admin who resolved the query (optional)
-- `transferNote`: Note about the transfer (optional)
-- `assignedToId`: ID of the admin the query is assigned to (optional)
-
-#### Message
-- `id`: Unique identifier (auto-incremented)
-- `content`: Message content
-- `queryId`: ID of the associated donor query (optional)
-- `isFromAdmin`: Whether the message is from an admin (legacy field, maintained for backward compatibility)
-- `senderType`: Type of the sender (ADMIN, DONOR, SYSTEM)
-- `donorId`: ID of the donor who sent the message (when senderType is DONOR)
-- `donorName`: Name of the donor who sent the message (when senderType is DONOR)
-- `donorInfo`: Additional donor information as JSON (optional)
-- `senderId`: ID of the sender (when senderType is ADMIN)
-- `recipientId`: ID of the recipient (optional)
-- `fcmToken`: Firebase Cloud Messaging token for notifications (optional)
-- `callSessionId`: ID of the associated call session (optional)
-- `createdAt`: Creation timestamp
-- `updatedAt`: Last update timestamp
-- `messageType`: Message type (QUERY, CHAT, SYSTEM, CALL_STARTED, CALL_ENDED)
-- `roomName`: Room name for calls (optional)
-- `callRequestId`: ID of the associated call request (optional)
-- `userToken`: User token for the call (optional)
-- `adminToken`: Admin token for the call (optional)
-
-#### CallSession
-- `id`: Unique identifier (auto-incremented)
-- `queryId`: ID of the associated donor query
-- `adminId`: ID of the admin who initiated the call
-- `roomName`: Daily.co room name (unique)
-- `status`: Call status (CREATED, STARTED, ENDED)
-- `startedAt`: When the call started (optional)
-- `endedAt`: When the call ended (optional)
-- `createdAt`: Creation timestamp
-- `updatedAt`: Last update timestamp
-- `adminToken`: Admin token for the call (optional)
-- `userToken`: User token for the call (optional)
-
-#### CallRequest
-- `id`: Unique identifier (auto-incremented)
-- `queryId`: ID of the associated donor query
-- `adminId`: ID of the admin who accepted/rejected the request (optional)
-- `message`: Optional message about the call request
-- `status`: Request status (PENDING, ACCEPTED, REJECTED, CANCELLED)
-- `createdAt`: Creation timestamp
-- `updatedAt`: Last update timestamp
-
-## Database Migration
-
-To apply database schema changes, run:
-
-```bash
-pnpm run db:update-schema
-```
-
-This script will:
-1. Try to apply migrations using Prisma's standard migration process
-2. If that fails, it will fall back to a direct database update using SQL
-3. The script handles existing enum types and ensures compatibility with PostgreSQL
-
-Make sure your `.env` file contains a valid `DATABASE_URL` with the correct credentials:
-
-```
-DATABASE_URL="postgresql://username:password@localhost:5432/database_name"
-```
-
-## Seeding the Database
-
-To seed the database with sample data, run:
-
-```bash
-pnpm run db:seed
-```
-
-This will create:
-- Sample users with different roles
-- Sample donor queries with various statuses (IN_PROGRESS, RESOLVED, TRANSFERRED)
-- Sample messages and call sessions
-
-## Environment Variables
-
-The following environment variables are required:
-
-- `DATABASE_URL`: PostgreSQL connection string
-- `JWT_SECRET`: Secret for JWT token generation
-- `DAILY_API_KEY`: API key for Daily.co video calls
-- `DAILY_DOMAIN`: Domain for Daily.co video calls
-- `FCM_SERVER_KEY`: Firebase Cloud Messaging server key for notifications
-
-Optional environment variables:
-
-- `PORT`: Port to run the server on (default: 3000)
-- `NODE_ENV`: Environment (development, production, test)
-- `LOG_LEVEL`: Logging level (error, warn, info, debug)
-
-## Error Handling
-
-All API endpoints follow a consistent error handling pattern:
-
-- `400 Bad Request`: Invalid input data
-- `401 Unauthorized`: Missing or invalid authentication
-- `403 Forbidden`: Insufficient permissions
-- `404 Not Found`: Resource not found
-- `500 Internal Server Error`: Server-side error
-
-Error responses include:
-- `statusCode`: HTTP status code
-- `message`: Error message
-- `error`: Error type (optional)
-- `details`: Additional error details (optional)
-
-Example error response:
-
-```json
-{
-  "statusCode": 400,
-  "message": "Invalid input data",
-  "error": "Bad Request",
-  "details": {
-    "sid": "sid is required"
+  "status": 201,
+  "data": {
+    "id": 790,
+    "content": "This is a message from a donor",
+    "queryId": 123,
+    "donorId": "donor_001",
+    "senderType": "DONOR",
+    "isFromAdmin": false,
+    "messageType": "QUERY",
+    "createdAt": "2023-10-15T12:35:56.789Z",
+    "updatedAt": "2023-10-15T12:35:56.789Z"
   }
 }
 ```
 
-### Call System Constraints
-
-#### Prevention of Multiple Active Calls
-
-The system is designed to prevent multiple active calls for the same query at a time. This constraint ensures that:
-
-1. Only one call session (with status `CREATED` or `STARTED`) can exist for a query at any given time
-2. When attempting to start a new call or accept a call request for a query that already has an active call, the system:
-   - Will not create a new call
-   - Will return a specific error response with information about the existing active call
-   - Will provide the room URL and details needed to join the existing call
-
-This design decision supports the requirement that "for the call if one call is going on, second person should be able to join only, not able to create it." It ensures that all participants (donors and admins) join the same call session, preventing confusion and fragmentation of the communication.
-
-When an attempt is made to create a second call while one is active, the response will include:
-- `success: false` to indicate the operation didn't create a new call
-- A message explaining that a call already exists
-- Data containing the existing call's details, including the room URL needed to join
-
-This information allows the frontend to redirect users to join the existing call rather than attempting to create a new one.
+### Communication
 
 #### GET /communication/calls/:queryId
 
@@ -1848,66 +1643,6 @@ curl --location --request GET 'http://localhost:3000/messages/admin/123?limit=10
     "total": 2,
     "limit": 10,
     "offset": 0
-  }
-}
-```
-
-##### POST /messages/donor/:queryId
-
-**Purpose:** Create a message from a donor with explicit donor information.
-
-**Request:**
-- **Method:** POST
-- **URL:** `/messages/donor/{queryId}`
-- **Body:**
-```json
-{
-  "content": "This is a message from a donor",
-  "donorId": "donor_001",
-  "donorName": "John Doe",
-  "messageType": "QUERY",
-  "donorInfo": {
-    "email": "john.doe@example.com",
-    "countryCode": "US"
-  }
-}
-```
-
-**cURL Example:**
-```bash
-curl --location --request POST 'http://localhost:3000/messages/donor/123' \
---header 'Content-Type: application/json' \
---data-raw '{
-  "content": "This is a message from a donor",
-  "donorId": "donor_001",
-  "donorName": "John Doe",
-  "messageType": "QUERY",
-  "donorInfo": {
-    "email": "john.doe@example.com",
-    "countryCode": "US"
-  }
-}'
-```
-
-**Response:**
-```json
-{
-  "status": 201,
-  "data": {
-    "id": 790,
-    "content": "This is a message from a donor",
-    "queryId": 123,
-    "donorId": "donor_001",
-    "donorName": "John Doe",
-    "donorInfo": {
-      "email": "john.doe@example.com",
-      "countryCode": "US"
-    },
-    "senderType": "DONOR",
-    "isFromAdmin": false,
-    "messageType": "QUERY",
-    "createdAt": "2023-10-15T12:35:56.789Z",
-    "updatedAt": "2023-10-15T12:35:56.789Z"
   }
 }
 ```

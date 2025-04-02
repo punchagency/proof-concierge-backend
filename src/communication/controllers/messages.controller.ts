@@ -47,17 +47,13 @@ export class MessagesController {
     @Body() createDonorMessageDto: {
       content: string;
       donorId: string;
-      donorName: string;
       messageType?: string;
-      donorInfo?: any;
     }
   ) {
     const message = await this.messagesService.create({
       content: createDonorMessageDto.content,
       queryId: +queryId,
       donorId: createDonorMessageDto.donorId,
-      donorName: createDonorMessageDto.donorName,
-      donorInfo: createDonorMessageDto.donorInfo,
       messageType: createDonorMessageDto.messageType as MessageType,
       isFromAdmin: false,
       senderType: SenderType.DONOR
