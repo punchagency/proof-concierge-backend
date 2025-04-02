@@ -172,6 +172,37 @@ export class CallsController {
     }
   }
 
+  @Post(':roomName/donor-end')
+  @Public()
+  async endCallByDonor(
+    @Param('roomName') roomName: string,
+    @Body() body: { donorId: string },
+  ) {
+    try {
+      if (!body.donorId) {
+        throw new HttpException(
+          'Donor ID is required',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+      
+      this.logger.log(`Ending call by donor with donorId: ${body.donorId}, roomName: ${roomName}`);
+      
+      const result = await this.callsService.endCallByDonor(roomName, body.donorId);
+      return {
+        success: true,
+        message: 'Call ended successfully by donor',
+        data: result,
+      };
+    } catch (error) {
+      this.logger.error('Error ending call by donor:', error);
+      throw new HttpException(
+        error.message || 'Failed to end call',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
   @Put(':roomName/status')
   async updateCallStatus(
     @Param('roomName') roomName: string,

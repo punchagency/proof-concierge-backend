@@ -48,6 +48,7 @@ This document provides a detailed guide to all the API endpoints in the Proof Co
     - [POST /communication/call/:queryId/reject-request/:requestId](#post-communicationcallqueryidreject-requestrequestid)
     - [POST /communication/call/:queryId/direct-call](#post-communicationcallqueryiddirect-call)
     - [GET /communication/call/:queryId/active-call](#get-communicationcallqueryidactive-call)
+    - [POST /communication/call/:roomName/donor-end](#post-communicationcallroomnamedonor-end)
 - [Protected Endpoints (Admin/Support Staff)](#protected-endpoints-adminsupport-staff)
   - [User Management](#user-management)
     - [GET /users/me](#get-usersme)
@@ -1352,6 +1353,51 @@ curl --location --request POST 'http://localhost:3000/messages/donor/123' \
   }
 }
 ```
+
+#### POST /communication/call/:roomName/donor-end
+
+**Purpose:** Allow donors to end an active call. This endpoint verifies that the donor is authorized to end the specified call.
+
+**Request:**
+- **Method:** POST
+- **URL:** `/communication/call/{roomName}/donor-end`
+- **Auth Required:** No (Public endpoint)
+- **Body:**
+```json
+{
+  "donorId": "donor_001"
+}
+```
+
+**cURL Example:**
+```bash
+curl --location --request POST 'http://localhost:3000/communication/call/room-abc-xyz/donor-end' \
+--header 'Content-Type: application/json' \
+--data-raw '{
+  "donorId": "donor_001"
+}'
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Call ended successfully by donor",
+  "data": {
+    "id": 123,
+    "queryId": 456,
+    "status": "ENDED",
+    "roomName": "room-abc-xyz",
+    "endedAt": "2023-04-15T13:30:45Z"
+  }
+}
+```
+
+**Error Responses:**
+- **400 Bad Request** - Donor ID is required
+- **403 Forbidden** - Not authorized to end this call (donor ID doesn't match the query)
+- **404 Not Found** - Call session not found
+- **500 Internal Server Error** - Failed to end call
 
 #### POST /communication/call/:queryId
 

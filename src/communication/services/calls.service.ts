@@ -283,6 +283,87 @@ export class CallsService implements OnModuleInit {
     }
   }
 
+  /**
+   * End a call by a donor, verifying that the donor is authorized to end this call
+   */
+  async endCallByDonor(roomName: string, donorId: string) {
+    if (!this.isInitialized) {
+      throw new Error('Daily.co API not initialized');
+    }
+
+    try {
+      // First get the call session to verify the donor is authorized
+      const callSession = await this.prisma.callSession.findUnique({
+        where: { roomName },
+        include: {
+          query: true,
+        },
+      });
+
+      if (!callSession) {
+        throw new Error(`Call session with room name ${roomName} not found`);
+      }
+
+      // Check if the donor is authorized to end this call
+      if (callSession.query.donorId !== donorId) {
+        throw new Error('You are not authorized to end this call');
+      }
+
+      // Update the call session status
+      const updatedCallSession = await this.prisma.callSession.update({
+        where: { roomName },
+        data: {
+          status: CallStatus.ENDED,
+          endedAt: new Date(),
+        },
+        include: {
+          query: true,
+        },
+      });
+
+      // Find the existing call started message
+      const existingCallMessage = await this.prisma.message.findFirst({
+        where: {
+          callSessionId: callSession.id,
+          messageType: MessageType.CALL_STARTED,
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+      });
+
+      if (existingCallMessage) {
+        // Update the existing message
+        await this.prisma.message.update({
+          where: { id: existingCallMessage.id },
+          data: {
+            content: 'Call ended by donor',
+            messageType: MessageType.CALL_ENDED,
+            updatedAt: new Date(),
+          },
+        });
+      } else {
+        // Fallback: Create a new message if no existing one is found
+        await this.messagesService.create({
+          queryId: callSession.queryId,
+          content: 'Call ended by donor',
+          messageType: MessageType.CALL_ENDED,
+          roomName,
+          callSessionId: callSession.id,
+          senderType: SenderType.DONOR
+        });
+      }
+
+      // Delete the room in Daily.co
+      await this.deleteRoom(roomName);
+
+      return updatedCallSession;
+    } catch (error) {
+      this.logger.error('Error ending call by donor:', error);
+      throw error;
+    }
+  }
+
   async updateCallStatus(roomName: string, status: CallStatus) {
     const callSession = await this.prisma.callSession.update({
       where: { roomName },
