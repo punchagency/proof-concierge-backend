@@ -3,7 +3,6 @@ import { PrismaService } from '../../database/prisma.service';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { Message, MessageType, User, UserRole, QueryStatus, SenderType } from '@prisma/client';
 import { NotificationsGateway } from '../../notifications/notifications.gateway';
-import { Socket } from 'socket.io';
 
 export interface CreateMessageDto {
   content: string;
@@ -389,6 +388,7 @@ export class MessagesService {
               adminToken: true,
               startedAt: true,
               endedAt: true,
+              callType: true,
             },
           },
         },

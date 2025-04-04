@@ -770,8 +770,9 @@ export class DonorQueriesService {
       // First create the query
       const query = await this.create(createDonorQueryDto);
       
-      // Now start a direct call for this query
-      const callResult = await this.callsService.startDirectCall(query.id);
+      // Now start a direct call for this query with the specified call type
+      const callType = createDonorQueryDto.callType || 'video';
+      const callResult = await this.callsService.startDirectCall(query.id, callType);
       
       // Return combined result with query and call details
       return {
@@ -780,7 +781,8 @@ export class DonorQueriesService {
           callSession: callResult.callSession,
           room: callResult.room,
           tokens: callResult.tokens,
-          roomUrl: `https://${this.callsService.getDomain()}/${callResult.room.name}`
+          roomUrl: `https://${this.callsService.getDomain()}/${callResult.room.name}`,
+          callType: callResult.callSession.callType || callType
         }
       };
     } catch (error) {

@@ -1,5 +1,12 @@
-import { IsOptional } from 'class-validator';
+import { IsOptional, IsEnum } from 'class-validator';
+
+export enum CallType {
+  VIDEO = 'video',
+  AUDIO = 'audio'
+}
 
 export class StartCallDto {
-  // No need for properties as all calls are the same
+  @IsOptional()
+  @IsEnum(CallType)
+  callType?: CallType = CallType.VIDEO; // Default to video call if not specified
 } 

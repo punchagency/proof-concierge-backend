@@ -323,10 +323,12 @@ export class EmailService {
    * Send email notification about a direct call started by a donor to the assigned admin
    * @param queryId Query ID
    * @param adminId Assigned admin ID
+   * @param callType Type of call (video/audio)
    */
   async sendDirectCallStartedNotification(
     queryId: number,
     adminId: number,
+    callType: string = 'video',
   ): Promise<boolean> {
     if (!this.isInitialized) {
       this.logger.warn('SendGrid not initialized. Skipping email notification.');
@@ -334,7 +336,7 @@ export class EmailService {
     }
 
     try {
-      this.logger.log(`Preparing to send direct call notification for Query #${queryId} to Admin #${adminId}`);
+      this.logger.log(`Preparing to send direct ${callType} call notification for Query #${queryId} to Admin #${adminId}`);
       
       // Find the assigned admin
       const admin = await this.prisma.user.findUnique({
@@ -374,31 +376,32 @@ export class EmailService {
       }
 
       const queryLink = `${this.frontendUrl}/donor-queries/${queryId}`;
+      const capitalizedCallType = callType.charAt(0).toUpperCase() + callType.slice(1);
 
       // Create email content
       const msg = {
         to: admin.email,
         from: fromEmail,
-        subject: `Direct Call Started: Query #${queryId} from ${query.donor}`,
+        subject: `Direct ${capitalizedCallType} Call Started: Query #${queryId} from ${query.donor}`,
         html: `
-          <h2>Direct Call Started by Donor</h2>
-          <p>A donor has started a direct call for:</p>
+          <h2>Direct ${capitalizedCallType} Call Started by Donor</h2>
+          <p>A donor has started a direct ${callType} call for:</p>
           <p><strong>Query ID:</strong> ${queryId}</p>
           <p><strong>Donor:</strong> ${query.donor}</p>
           ${query.donorId ? `<p><strong>Donor ID:</strong> ${query.donorId}</p>` : ''}
           <p><strong>Test:</strong> ${query.test}</p>
-          <p><a href="${queryLink}" style="background-color: #4CAF50; color: white; padding: 10px 15px; text-decoration: none; border-radius: 5px; margin-top: 15px; display: inline-block;">Join Call</a></p>
+          <p><a href="${queryLink}" style="background-color: #4CAF50; color: white; padding: 10px 15px; text-decoration: none; border-radius: 5px; margin-top: 15px; display: inline-block;">Join ${capitalizedCallType} Call</a></p>
         `,
       };
 
-      this.logger.log(`Sending direct call notification email to ${admin.email} (${admin.name || 'Unknown Admin'}) for Query #${queryId}`);
+      this.logger.log(`Sending direct ${callType} call notification email to ${admin.email} (${admin.name || 'Unknown Admin'}) for Query #${queryId}`);
       
       // Send the email
       await sgMail.send(msg);
-      this.logger.log(`✅ Direct call notification email successfully sent to ${admin.email} for Query #${queryId}`);
+      this.logger.log(`✅ Direct ${callType} call notification email successfully sent to ${admin.email} for Query #${queryId}`);
       return true;
     } catch (error) {
-      this.logger.error(`❌ Error sending direct call notification for Query #${queryId}: ${error.message}`, error.stack);
+      this.logger.error(`❌ Error sending direct ${callType} call notification for Query #${queryId}: ${error.message}`, error.stack);
       return false;
     }
   }

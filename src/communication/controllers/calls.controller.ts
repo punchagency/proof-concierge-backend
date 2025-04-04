@@ -70,16 +70,20 @@ export class CallsController {
         );
       }
       
-      this.logger.log(`Starting call with adminId: ${adminId}, queryId: ${queryId}`);
+      this.logger.log(`Starting call with adminId: ${adminId}, queryId: ${queryId}, callType: ${startCallDto.callType}`);
       
       const result = await this.callsService.startCall(
         queryId,
         adminId,
+        startCallDto.callType,
       );
 
       // Log the room URL
       const roomUrl = `https://${this.callsService.getDomain()}/${result.room.name}`;
       this.logger.log(`Call room created: ${roomUrl}`);
+      
+      // Get the callType from the callSession object
+      const callType = (result.callSession.callType || 'video') as 'video' | 'audio';
       
       // Send notification to the user if FCM token is available
       if (result.notificationData?.fcmToken) {
@@ -87,7 +91,7 @@ export class CallsController {
           result.notificationData.fcmToken,
           result.notificationData.adminName,
           result.room.name,
-          'video'
+          callType // Use the callType from the call session
         );
       }
 
@@ -112,12 +116,13 @@ export class CallsController {
 
       return {
         success: true,
-        message: `Call initiated`,
+        message: `${callType.charAt(0).toUpperCase() + callType.slice(1)} call initiated`,
         data: {
           callSession: result.callSession,
           adminToken: result.tokens.admin,
           userToken: result.tokens.user,
           roomUrl: roomUrl,
+          callType: callType
         },
       };
     } catch (error) {
@@ -268,9 +273,11 @@ export class CallsController {
   @Public()
   async startDirectCall(
     @Param('queryId') queryId: string,
+    @Body() body: { callType?: string }
   ) {
     try {
-      const result = await this.callsService.startDirectCall(+queryId);
+      const callType = body.callType || 'video';
+      const result = await this.callsService.startDirectCall(+queryId, callType);
 
       // Send WebSocket notification about the direct call being started
       this.notificationsGateway.notifyDirectCallStarted(
@@ -278,9 +285,12 @@ export class CallsController {
         result.callSession
       );
 
+      // Get the callType from the result
+      const resultCallType = (result.callSession.callType || 'video') as 'video' | 'audio';
+
       return {
         success: true,
-        message: `Call started successfully`,
+        message: `${resultCallType.charAt(0).toUpperCase() + resultCallType.slice(1)} call started successfully`,
         data: result,
       };
     } catch (error) {
@@ -316,6 +326,7 @@ export class CallsController {
       // Return the most recent active call
       const activeCall = activeCalls[0];
       const roomUrl = `https://${this.callsService.getDomain()}/${activeCall.roomName}`;
+      const callType = activeCall.callType || 'video';
       
       return {
         success: true,
@@ -324,6 +335,7 @@ export class CallsController {
           callSession: activeCall,
           roomUrl,
           userToken: activeCall.userToken,
+          callType: callType
         },
       };
     } catch (error) {
@@ -383,9 +395,10 @@ export class CallsController {
   @Post(':queryId/accept-request')
   async acceptCallRequestWithoutId(
     @Param('queryId') queryId: string,
+    @Body() body: { callType?: string },
     @Request() req: any,
   ) {
-    return this.handleAcceptCallRequest(queryId, req);
+    return this.handleAcceptCallRequest(queryId, req, undefined, body.callType);
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
@@ -394,15 +407,17 @@ export class CallsController {
   async acceptCallRequestWithId(
     @Param('queryId') queryId: string,
     @Param('requestId') requestId: string,
+    @Body() body: { callType?: string },
     @Request() req: any,
   ) {
-    return this.handleAcceptCallRequest(queryId, req, requestId);
+    return this.handleAcceptCallRequest(queryId, req, requestId, body.callType);
   }
 
   private async handleAcceptCallRequest(
     queryId: string,
     req: any,
     requestId?: string,
+    callType: string = 'video',
   ) {
     try {
       // Debug: Log the request object to see its structure
@@ -423,7 +438,7 @@ export class CallsController {
         );
       }
       
-      this.logger.log(`Accepting call request with adminId: ${adminId}, queryId: ${queryId}${requestId ? `, requestId: ${requestId}` : ''}`);
+      this.logger.log(`Accepting call request with adminId: ${adminId}, queryId: ${queryId}${requestId ? `, requestId: ${requestId}` : ''}, callType: ${callType}`);
       
       // First check if the admin is assigned to this query
       const query = await this.callsService.validateAdminAccess(+queryId, adminId);
@@ -439,7 +454,8 @@ export class CallsController {
         const result = await this.callsService.acceptCallRequest(
           +queryId,
           adminId,
-          requestId ? +requestId : undefined
+          requestId ? +requestId : undefined,
+          callType
         );
 
         // Log the room URL
@@ -453,60 +469,29 @@ export class CallsController {
           adminId
         );
 
+        // Get the callType from the result
+        const resultCallType = (result.callSession.callType || 'video') as 'video' | 'audio';
+        const capitalizedCallType = resultCallType.charAt(0).toUpperCase() + resultCallType.slice(1);
+
         return {
           success: true,
-          message: `Call request accepted and call initiated`,
+          message: `Call request accepted and ${capitalizedCallType} call initiated`,
           data: {
             ...result,
             roomUrl: roomUrl, // Include the room URL in the response
           },
         };
       } catch (error) {
-        // Check if this is the specific error about an existing active call
-        if (error.message && error.message.includes('There is already an active call for this query')) {
-          // Find the existing active call
-          const existingCalls = await this.prisma.callSession.findMany({
-            where: { 
-              queryId: +queryId,
-              status: {
-                in: ['CREATED', 'STARTED']
-              }
-            },
-            orderBy: { createdAt: 'desc' },
-            include: {
-              admin: {
-                select: {
-                  id: true,
-                  name: true,
-                  role: true,
-                },
-              },
-            },
-            take: 1
-          });
-          
-          if (existingCalls.length > 0) {
-            const existingCall = existingCalls[0];
-            const roomUrl = `https://${this.callsService.getDomain()}/${existingCall.roomName}`;
-            
-            return {
-              success: false,
-              message: `There is already an active call for this query. You can join the existing call.`,
-              data: {
-                existingCall,
-                roomUrl: roomUrl,
-              },
-            };
-          }
-        }
-        
-        // Re-throw the error if it's not about an existing call or if we couldn't find the existing call
-        throw error;
+        this.logger.error('Error accepting call request:', error);
+        throw new HttpException(
+          error.message || 'Failed to accept call request',
+          HttpStatus.INTERNAL_SERVER_ERROR,
+        );
       }
     } catch (error) {
-      this.logger.error('Error accepting call request:', error);
+      this.logger.error('Error handling call request:', error);
       throw new HttpException(
-        error.message || 'Failed to accept call request',
+        error.message || 'Failed to handle call request',
         error.status || HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }

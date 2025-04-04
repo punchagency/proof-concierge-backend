@@ -1,4 +1,9 @@
-import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { IsEnum, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+
+export enum CallType {
+  VIDEO = 'video',
+  AUDIO = 'audio',
+}
 
 export class CreateDonorQueryDto {
   @IsString()
@@ -28,4 +33,8 @@ export class CreateDonorQueryDto {
   @IsString()
   @IsOptional()
   fcmToken?: string;
+  
+  @IsEnum(CallType)
+  @IsOptional()
+  callType?: CallType = CallType.VIDEO; // Default to video call if not specified
 } 

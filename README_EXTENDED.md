@@ -826,7 +826,8 @@ curl --location --request GET 'http://localhost:3000/donor-queries/general?test=
   "test": "unit-test",
   "stage": "initial",
   "device": "web",
-  "content": "I need help with my donation and want to start a call immediately"
+  "content": "I need help with my donation and want to start a call immediately",
+  "callType": "video" // Optional, can be "video" or "audio", defaults to "video" if not specified
 }
 ```
 
@@ -840,7 +841,8 @@ curl --location --request POST 'http://localhost:3000/donor-queries/start-call' 
   "test": "unit-test",
   "stage": "initial",
   "device": "web",
-  "content": "I need help with my donation and want to start a call immediately"
+  "content": "I need help with my donation and want to start a call immediately",
+  "callType": "audio"
 }'
 ```
 
@@ -869,6 +871,7 @@ curl --location --request POST 'http://localhost:3000/donor-queries/start-call' 
         "status": "CREATED",
         "userToken": "user_token_for_authentication",
         "adminToken": "admin_token_for_authentication",
+        "callType": "video",
         "createdAt": "2023-10-10T12:00:01.000Z"
       },
       "room": {
@@ -878,7 +881,8 @@ curl --location --request POST 'http://localhost:3000/donor-queries/start-call' 
         "admin": "admin_token_for_authentication",
         "user": "user_token_for_authentication"
       },
-      "roomUrl": "https://domain.daily.co/room-abc-xyz"
+      "roomUrl": "https://domain.daily.co/room-abc-xyz",
+      "callType": "video"
     }
   }
 }
@@ -886,6 +890,7 @@ curl --location --request POST 'http://localhost:3000/donor-queries/start-call' 
 
 **Notes:**
 - This endpoint creates a new query and immediately starts a call in one step
+- The `callType` parameter allows specifying whether to start a video call or an audio-only call
 - It returns both the query details and all the information needed to join the call
 - The donor can use the `userToken` and `roomUrl` to join the call directly
 - If there is an admin assigned to the query, they will receive a notification about the call
@@ -1323,158 +1328,41 @@ curl --location --request POST 'http://localhost:3000/messages/donor/123' \
 
 ### Communication
 
-#### GET /communication/calls/:queryId
+The Proof Concierge Backend provides a comprehensive API for handling call sessions between admins and donors. This includes starting and ending calls, managing call requests, and handling direct calls initiated by donors.
 
-**Purpose:** Get all call sessions and related messages for a specific donor query.
+#### Key Features:
+- Support for both video and audio calls
+- Call request system with acceptance/rejection
+- Direct call initiation by donors
+- Call status tracking
+- Real-time notifications for call events
+- Automatic room cleanup for completed/expired calls
 
-**Request:**
-- **Method:** GET
-- **URL:** `/communication/calls/{queryId}`
-- **Auth Required:** Yes
-- **Permissions Required:** ADMIN, SUPER_ADMIN
-
-**Response:**
-```json
-{
-  "success": true,
-  "message": "Call status updated to STARTED",
-  "data": {
-    "callSession": {
-      "id": 123,
-      "queryId": 456,
-      "adminId": 789,
-      "status": "CREATED",
-      "roomName": "room-abc-xyz",
-      "createdAt": "2023-04-15T12:30:45Z"
-    },
-    "adminToken": "admin_token_for_authentication",
-    "userToken": "user_token_for_authentication",
-    "roomUrl": "https://domain.daily.co/room-abc-xyz"
-  }
-}
-```
-
-#### POST /communication/call/:roomName/donor-end
-
-**Purpose:** Allow donors to end an active call. This endpoint verifies that the donor is authorized to end the specified call.
-
-**Request:**
-- **Method:** POST
-- **URL:** `/communication/call/{roomName}/donor-end`
-- **Auth Required:** No (Public endpoint)
-- **Body:**
-```json
-{
-  "donorId": "donor_001"
-}
-```
-
-**cURL Example:**
-```bash
-curl --location --request POST 'http://localhost:3000/communication/call/room-abc-xyz/donor-end' \
---header 'Content-Type: application/json' \
---data-raw '{
-  "donorId": "donor_001"
-}'
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "message": "Call ended successfully by donor",
-  "data": {
-    "id": 123,
-    "queryId": 456,
-    "status": "ENDED",
-    "roomName": "room-abc-xyz",
-    "endedAt": "2023-04-15T13:30:45Z"
-  }
-}
-```
-
-**Error Responses:**
-- **400 Bad Request** - Donor ID is required
-- **403 Forbidden** - Not authorized to end this call (donor ID doesn't match the query)
-- **404 Not Found** - Call session not found
-- **500 Internal Server Error** - Failed to end call
+#### Call Types
+The system supports two types of calls:
+- **Video Calls** (`callType: "video"`): Default option with both audio and video capabilities
+- **Audio Calls** (`callType: "audio"`): Audio-only calls for situations with limited bandwidth or where video is not needed
 
 #### POST /communication/call/:queryId
 
-**Purpose:** Start a new call for a specific query. This endpoint is restricted to admins who are assigned to the query.
-
-- **Method:** POST
-- **URL:** `/communication/call/{queryId}`
-- **Auth Required:** Yes
-- **Permissions Required:** ADMIN, SUPER_ADMIN
-
-**Request Body:**
-```json
-{
-  "roomName": "optional-custom-room-name" // Optional, a custom room name
-}
-```
-
-**Success Response:**
-```json
-{
-  "success": true,
-  "message": "Call initiated",
-  "data": {
-    "callSession": {
-      "id": 123,
-      "queryId": 456,
-      "adminId": 789,
-      "status": "CREATED",
-      "roomName": "room-abc-xyz",
-      "createdAt": "2023-04-15T12:30:45Z"
-    },
-    "adminToken": "admin_token_for_authentication",
-    "userToken": "user_token_for_authentication",
-    "roomUrl": "https://domain.daily.co/room-abc-xyz"
-  }
-}
-```
-
-**Error Responses:**
-
-- **401 Unauthorized** - Not authenticated
-- **403 Forbidden** - Not authorized (not an admin)
-- **500 Internal Server Error** - Failed to start call (e.g., "There is already an active call for this query. Please end the existing call before starting a new one.")
-
-**Usage Example:**
-```bash
-curl --location --request POST 'http://localhost:3000/communication/call/123' \
---header 'Authorization: Bearer YOUR_TOKEN' \
---header 'Content-Type: application/json' \
---data-raw '{
-  "roomName": "optional-custom-room-name"
-}'
-```
-
-**Notes:**
-- This endpoint creates a new call session and generates tokens for both the admin and user.
-- It also sends a WebSocket notification with the `callStarted` event.
-- Only one active call (status "CREATED" or "STARTED") can exist for a query at a time.
-
-#### POST /communication/call/:queryId/request
-
-**Purpose:** Request a call session for a specific donor query. This creates a call request record and notifies the assigned admin.
-
-#### POST /communication/call/:queryId/direct-call
-
-**Purpose:** Start a direct call for a specific donor query without requiring an admin to accept a request first. This endpoint is public and allows donors to initiate calls directly.
+**Purpose:** Start a call session between an admin and a donor for a specific query. This endpoint is restricted to users with ADMIN or SUPER_ADMIN roles.
 
 **Request:**
 - **Method:** POST
-- **URL:** `/communication/call/{queryId}/direct-call`
-- **Auth Required:** No (Public endpoint)
+- **URL:** `/communication/call/{queryId}`
+- **Headers:** Requires JWT Authentication and Admin Role
+- **Body:**
+```json
+{
+  "callType": "video" // Optional, can be "video" or "audio", defaults to "video" if not specified
+}
+```
 
 **Success Response:**
 ```json
 {
   "success": true,
-  "message": "Call started successfully",
+  "message": "Video call initiated", // or "Audio call initiated" for audio calls
   "data": {
     "callSession": {
       "id": 123,
@@ -1484,6 +1372,182 @@ curl --location --request POST 'http://localhost:3000/communication/call/123' \
       "roomName": "room-abc-xyz",
       "userToken": "user_token_for_authentication",
       "adminToken": "admin_token_for_authentication",
+      "callType": "video", // or "audio" for audio-only calls
+      "createdAt": "2023-04-15T12:30:45Z"
+    },
+    "adminToken": "admin_token_for_authentication",
+    "userToken": "user_token_for_authentication",
+    "roomUrl": "https://domain.daily.co/room-abc-xyz",
+    "callType": "video" // The type of call that was created
+  }
+}
+```
+
+**Usage Example:**
+```bash
+curl --location --request POST 'http://localhost:3000/communication/call/123' \
+--header 'Authorization: Bearer YOUR_TOKEN' \
+--header 'Content-Type: application/json' \
+--data-raw '{
+  "callType": "audio"
+}'
+```
+
+**Notes:**
+- This endpoint creates a new call session with Daily.co and generates tokens for both the admin and the donor.
+- The `callType` parameter allows specifying whether to start a video call or an audio-only call.
+- A message is created to record the call activity in the chat history.
+- WebSocket events are emitted with the `callStarted` event.
+- If FCM tokens are available, push notifications are sent to the donor's device.
+
+#### POST /communication/call/:queryId/request
+
+**Purpose:** Create a call request from a donor, which admins can then accept or reject. This endpoint is public and allows donors to request calls.
+
+**Request:**
+- **Method:** POST
+- **URL:** `/communication/call/{queryId}/request`
+- **Auth Required:** No (Public endpoint)
+- **Body:**
+```json
+{
+  "message": "I would like to discuss my test results" // Optional message from the donor
+}
+```
+
+**Success Response:**
+```json
+{
+  "success": true,
+  "message": "Call request created successfully",
+  "data": {
+    "callRequest": {
+      "id": 123,
+      "queryId": 456,
+      "status": "PENDING",
+      "adminId": null,
+      "message": "I would like to discuss my test results",
+      "createdAt": "2023-04-15T12:30:45Z"
+    },
+    "message": {
+      "id": 789,
+      "queryId": 456,
+      "senderId": null,
+      "content": "Donor requested a call: I would like to discuss my test results",
+      "messageType": "SYSTEM",
+      "callRequestId": 123,
+      "createdAt": "2023-04-15T12:30:45Z"
+    }
+  }
+}
+```
+
+**Notes:**
+- This endpoint creates a call request record that admins can see and respond to.
+- A system message is created in the chat to record the request.
+- Notifications are sent to the assigned admin if applicable.
+
+#### POST /communication/call/:queryId/accept-request
+
+**Purpose:** Accept a call request and start a call session. This endpoint is restricted to users with ADMIN or SUPER_ADMIN roles.
+
+**Request:**
+- **Method:** POST
+- **URL:** `/communication/call/{queryId}/accept-request`
+- **Headers:** Requires JWT Authentication and Admin Role
+- **Body:**
+```json
+{
+  "callType": "video" // Optional, can be "video" or "audio", defaults to "video" if not specified
+}
+```
+
+**Success Response:**
+```json
+{
+  "success": true,
+  "message": "Call request accepted and video call initiated", // or "... audio call initiated"
+  "data": {
+    "callSession": {
+      "id": 123,
+      "queryId": 456,
+      "adminId": 789,
+      "status": "CREATED",
+      "roomName": "room-abc-xyz",
+      "userToken": "user_token_for_authentication",
+      "adminToken": "admin_token_for_authentication",
+      "callType": "video", // or "audio" for audio-only calls
+      "createdAt": "2023-04-15T12:30:45Z"
+    },
+    "callRequest": {
+      "id": 123,
+      "queryId": 456,
+      "status": "ACCEPTED",
+      "adminId": 789,
+      "message": "Donor requested a call",
+      "createdAt": "2023-04-15T12:30:45Z"
+    },
+    "tokens": {
+      "admin": "admin_token_for_authentication",
+      "user": "user_token_for_authentication"
+    },
+    "roomUrl": "https://domain.daily.co/room-abc-xyz",
+    "callType": "video" // The type of call that was created
+  }
+}
+```
+
+**Error Responses:**
+- **404 Not Found** - Call request not found
+- **400 Bad Request** - Call request already accepted or rejected
+- **500 Internal Server Error** - Failed to accept call request
+
+**Usage Example:**
+```bash
+curl --location --request POST 'http://localhost:3000/communication/call/123/accept-request' \
+--header 'Authorization: Bearer YOUR_TOKEN' \
+--header 'Content-Type: application/json' \
+--data-raw '{
+  "callType": "audio"
+}'
+```
+
+**Notes:**
+- This endpoint accepts the most recent call request for the specified query and starts a call session.
+- The `callType` parameter allows specifying whether to start a video call or an audio-only call.
+- It sends a WebSocket notification to the donor that their call request has been accepted.
+- It also sends FCM notifications if available.
+
+#### POST /communication/call/:queryId/direct-call
+
+**Purpose:** Start a direct call for a specific donor query without requiring an admin to accept a request first. This endpoint is public and allows donors to initiate calls directly.
+
+**Request:**
+- **Method:** POST
+- **URL:** `/communication/call/{queryId}/direct-call`
+- **Auth Required:** No (Public endpoint)
+- **Body:**
+```json
+{
+  "callType": "video" // Optional, can be "video" or "audio", defaults to "video" if not specified
+}
+```
+
+**Success Response:**
+```json
+{
+  "success": true,
+  "message": "Video call started successfully", // or "Audio call started successfully"
+  "data": {
+    "callSession": {
+      "id": 123,
+      "queryId": 456,
+      "adminId": 789,
+      "status": "CREATED",
+      "roomName": "room-abc-xyz",
+      "userToken": "user_token_for_authentication",
+      "adminToken": "admin_token_for_authentication",
+      "callType": "video", // or "audio" for audio-only calls
       "createdAt": "2023-04-15T12:30:45Z"
     },
     "room": {
@@ -1508,11 +1572,16 @@ curl --location --request POST 'http://localhost:3000/communication/call/123' \
 
 **Usage Example:**
 ```bash
-curl --location --request POST 'http://localhost:3000/communication/call/123/direct-call'
+curl --location --request POST 'http://localhost:3000/communication/call/123/direct-call' \
+--header 'Content-Type: application/json' \
+--data-raw '{
+  "callType": "audio"
+}'
 ```
 
 **Notes:**
 - This endpoint creates a new call session and generates tokens for both the admin and the donor.
+- The `callType` parameter allows specifying whether to start a video call or an audio-only call.
 - If a call is already active for the query, it returns the existing call details instead of creating a new one.
 - It sends notifications (WebSocket, FCM, and email) to the assigned admin.
 - WebSocket events are emitted with the `directCallStarted` event.
@@ -1540,10 +1609,12 @@ curl --location --request POST 'http://localhost:3000/communication/call/123/dir
       "roomName": "room-abc-xyz",
       "userToken": "user_token_for_authentication",
       "adminToken": "admin_token_for_authentication",
+      "callType": "video", // The type of call (video or audio)
       "createdAt": "2023-04-15T12:30:45Z"
     },
     "roomUrl": "https://domain.daily.co/room-abc-xyz",
-    "userToken": "user_token_for_authentication"
+    "userToken": "user_token_for_authentication",
+    "callType": "video" // The type of call (video or audio)
   }
 }
 ```
@@ -1568,7 +1639,7 @@ curl --location --request GET 'http://localhost:3000/communication/call/123/acti
 **Notes:**
 - This endpoint returns details of any active call (status "CREATED" or "STARTED") for the specified query.
 - If multiple active calls exist (which should not happen), it returns the most recent one.
-- The response includes the room URL and user token needed to join the call.
+- The response includes the room URL, user token, and call type needed to join the call.
 
 ### Messages
 
