@@ -12,6 +12,9 @@ import { AppController } from './app.controller';
 import { LoggingModule } from './logging/logging.module';
 import { APP_INTERCEPTOR } from '@nestjs/core';
 import { ActivityLoggingInterceptor } from './logging/interceptors/activity-logging.interceptor';
+import { TicketsModule } from './tickets/tickets.module';
+import { CallsModule } from './calls/calls.module';
+import { TextMessagesModule } from './text-messages/text-messages.module';
 
 @Module({
   imports: [
@@ -27,6 +30,9 @@ import { ActivityLoggingInterceptor } from './logging/interceptors/activity-logg
     CommunicationModule,
     DonorQueriesModule,
     HealthModule,
+    TicketsModule,
+    CallsModule,
+    TextMessagesModule,
   ],
   controllers: [AppController],
   providers: [

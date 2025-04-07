@@ -27,6 +27,9 @@ model User {
   receivedMessages   Message[]     @relation("ReceivedMessages")
   sentMessages       Message[]     @relation("SentMessages")
   callRequests       CallRequest[] @relation("AdminCallRequests")
+  adminTickets       Ticket[]      @relation("AdminTickets")
+  transfersFrom      TicketTransfer[] @relation("TransferFromAdmin") 
+  transfersTo        TicketTransfer[] @relation("TransferToAdmin")
 }
 
 model DonorQuery {
@@ -161,4 +164,86 @@ enum SenderType {
   ADMIN
   DONOR
   SYSTEM
+}
+
+// New models for the ticket system
+model Ticket {
+  id             String    @id @default(uuid())
+  donorId        String
+  donorEmail     String
+  description    String?   @db.Text
+  callRequested  Boolean   @default(false)
+  callType       String?
+  status         String
+  adminId        Int?
+  activeCallId   String?   @unique
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  
+  // Relationships
+  admin          User?     @relation("AdminTickets", fields: [adminId], references: [id])
+  activeCall     Call?     @relation("ActiveTicketCall", fields: [activeCallId], references: [id])
+  calls          Call[]    @relation("TicketCalls")
+  messages       TextMessage[]
+  transfers      TicketTransfer[]
+
+  @@index([adminId])
+  @@index([donorId])
+}
+
+model Call {
+  id             String    @id @default(uuid())
+  ticketId       String
+  dailyRoomUrl   String
+  status         String
+  callType       String
+  initiatedBy    String
+  startedAt      DateTime
+  endedAt        DateTime?
+  userToken      String    @db.Text  // Token for donor to join the call
+  adminToken     String    @db.Text  // Token for admin to join the call
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  // Relationships
+  ticket         Ticket    @relation("TicketCalls", fields: [ticketId], references: [id], onDelete: Cascade)
+  activeTicket   Ticket?   @relation("ActiveTicketCall")
+
+  @@index([ticketId])
+}
+
+model TextMessage {
+  id             String    @id @default(uuid())
+  ticketId       String
+  senderId       String
+  senderType     String
+  content        String    @db.Text
+  messageType    String    @default("text")
+  isRead         Boolean   @default(false)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  // Relationships
+  ticket         Ticket    @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId])
+  @@index([senderId])
+}
+
+model TicketTransfer {
+  id             String    @id @default(uuid())
+  ticketId       String
+  fromAdminId    Int
+  toAdminId      Int
+  transferNotes  String?   @db.Text
+  transferredAt  DateTime  @default(now())
+
+  // Relationships
+  ticket         Ticket    @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  fromAdmin      User      @relation("TransferFromAdmin", fields: [fromAdminId], references: [id])
+  toAdmin        User      @relation("TransferToAdmin", fields: [toAdminId], references: [id])
+
+  @@index([ticketId])
+  @@index([fromAdminId])
+  @@index([toAdminId])
 }
