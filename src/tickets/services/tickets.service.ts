@@ -5,13 +5,17 @@ import { UpdateTicketDto } from '../dto/update-ticket.dto';
 import { TransferTicketDto } from '../dto/transfer-ticket.dto';
 import { Ticket, TicketStatus } from '../entities/ticket.entity';
 import { CallStatus } from '../../calls/entities/call.entity';
+import { TextMessagesGateway } from '../../text-messages/text-messages.gateway';
 
 @Injectable()
 export class TicketsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private textMessagesGateway: TextMessagesGateway
+  ) {}
 
   async create(createTicketDto: CreateTicketDto): Promise<Ticket> {
-    return this.prisma.ticket.create({
+    const ticket = await this.prisma.ticket.create({
       data: {
         donorId: createTicketDto.donorId,
         donorEmail: createTicketDto.donorEmail,
@@ -21,6 +25,11 @@ export class TicketsService {
         status: TicketStatus.NEW,
       },
     }) as unknown as Ticket;
+    
+    // Emit event for new ticket
+    this.textMessagesGateway.notifyNewTicket(ticket);
+    
+    return ticket;
   }
 
   async findAll(status?: string): Promise<Ticket[]> {
@@ -30,13 +39,32 @@ export class TicketsService {
     }) as unknown as Ticket[];
   }
 
-  async findOne(id: string): Promise<Ticket> {
+  async findOne(id: string): Promise<any> {
     const ticket = await this.prisma.ticket.findUnique({
       where: { id },
+      include: {
+        activeCall: true
+      }
     });
     
     if (!ticket) {
       throw new NotFoundException(`Ticket with ID ${id} not found`);
+    }
+    
+    // If there's an active call, include its details in the response
+    if (ticket.activeCallId && ticket.activeCall) {
+      return {
+        ...ticket,
+        activeCall: {
+          id: ticket.activeCall.id,
+          dailyRoomUrl: ticket.activeCall.dailyRoomUrl,
+          adminToken: ticket.activeCall.adminToken,
+          userToken: ticket.activeCall.userToken,
+          status: ticket.activeCall.status,
+          callType: ticket.activeCall.callType,
+          startedAt: ticket.activeCall.startedAt
+        }
+      };
     }
     
     return ticket as unknown as Ticket;
@@ -51,28 +79,86 @@ export class TicketsService {
       throw new NotFoundException(`Ticket with ID ${id} not found`);
     }
     
-    return this.prisma.ticket.update({
+    const updatedTicket = await this.prisma.ticket.update({
       where: { id },
       data: updateTicketDto,
     }) as unknown as Ticket;
+    
+    // If status changed, emit event
+    if (updateTicketDto.status && updateTicketDto.status !== ticket.status) {
+      this.textMessagesGateway.notifyTicketStatusChanged(
+        id, 
+        ticket.status, 
+        updateTicketDto.status, 
+        updatedTicket.adminId || undefined
+      );
+    }
+    
+    return updatedTicket;
   }
 
-  async assignToAdmin(id: string, adminId: number): Promise<Ticket> {
+  async assignToAdmin(id: string, adminId: number): Promise<any> {
     const ticket = await this.prisma.ticket.findUnique({
       where: { id },
+      include: {
+        activeCall: true
+      }
     });
     
     if (!ticket) {
       throw new NotFoundException(`Ticket with ID ${id} not found`);
     }
     
-    return this.prisma.ticket.update({
+    const oldStatus = ticket.status;
+    
+    // Determine the new status - preserve ACTIVE_CALL if there's an active call
+    const newStatus = ticket.activeCallId && ticket.activeCall?.status === CallStatus.ACTIVE 
+      ? TicketStatus.ACTIVE_CALL 
+      : TicketStatus.PENDING;
+    
+    const updatedTicket = await this.prisma.ticket.update({
       where: { id },
       data: {
         adminId,
-        status: TicketStatus.PENDING,
+        status: newStatus,
       },
     }) as unknown as Ticket;
+    
+    // Emit status change event
+    this.textMessagesGateway.notifyTicketStatusChanged(id, oldStatus, newStatus, adminId);
+    
+    // If there's an active call, fetch its details to include in the response
+    if (updatedTicket.activeCallId) {
+      const activeCall = await this.prisma.call.findUnique({
+        where: { id: updatedTicket.activeCallId as string },
+        select: {
+          id: true,
+          dailyRoomUrl: true,
+          adminToken: true,
+          userToken: true,
+          status: true,
+          callType: true,
+          startedAt: true
+        }
+      });
+      
+      if (activeCall && activeCall.status === CallStatus.ACTIVE) {
+        return {
+          ...updatedTicket,
+          activeCall: {
+            id: activeCall.id,
+            dailyRoomUrl: activeCall.dailyRoomUrl,
+            adminToken: activeCall.adminToken,
+            userToken: activeCall.userToken,
+            status: activeCall.status,
+            callType: activeCall.callType,
+            startedAt: activeCall.startedAt
+          }
+        };
+      }
+    }
+    
+    return updatedTicket;
   }
 
   async transferTicket(id: string, fromAdminId: number, transferDto: TransferTicketDto): Promise<Ticket> {
@@ -84,8 +170,10 @@ export class TicketsService {
       throw new NotFoundException(`Ticket with ID ${id} not found`);
     }
     
+    const oldStatus = ticket.status;
+    
     // Perform the transfer in a transaction
-    return this.prisma.$transaction(async (tx) => {
+    const updatedTicket = await this.prisma.$transaction(async (tx) => {
       // Create transfer record
       await tx.ticketTransfer.create({
         data: {
@@ -105,6 +193,14 @@ export class TicketsService {
         },
       });
     }) as unknown as Ticket;
+    
+    // Emit ticket transferred event
+    this.textMessagesGateway.notifyTicketTransferred(id, fromAdminId, transferDto.toAdminId);
+    
+    // Also emit status change event
+    this.textMessagesGateway.notifyTicketStatusChanged(id, oldStatus, TicketStatus.TRANSFERRED, transferDto.toAdminId);
+    
+    return updatedTicket;
   }
 
   async closeTicket(id: string): Promise<Ticket> {
@@ -116,12 +212,23 @@ export class TicketsService {
       throw new NotFoundException(`Ticket with ID ${id} not found`);
     }
     
-    return this.prisma.ticket.update({
+    const oldStatus = ticket.status;
+    const updatedTicket = await this.prisma.ticket.update({
       where: { id },
       data: {
         status: TicketStatus.CLOSED,
       },
     }) as unknown as Ticket;
+    
+    // Emit status change event
+    this.textMessagesGateway.notifyTicketStatusChanged(
+      id, 
+      oldStatus, 
+      TicketStatus.CLOSED, 
+      ticket.adminId || undefined
+    );
+    
+    return updatedTicket;
   }
 
   async resolveTicket(id: string): Promise<Ticket> {
@@ -133,12 +240,23 @@ export class TicketsService {
       throw new NotFoundException(`Ticket with ID ${id} not found`);
     }
     
-    return this.prisma.ticket.update({
+    const oldStatus = ticket.status;
+    const updatedTicket = await this.prisma.ticket.update({
       where: { id },
       data: {
         status: TicketStatus.RESOLVED,
       },
     }) as unknown as Ticket;
+    
+    // Emit status change event
+    this.textMessagesGateway.notifyTicketStatusChanged(
+      id, 
+      oldStatus, 
+      TicketStatus.RESOLVED, 
+      ticket.adminId || undefined
+    );
+    
+    return updatedTicket;
   }
 
   async getTicketTransfers(id: string) {
@@ -246,9 +364,11 @@ export class TicketsService {
       throw new NotFoundException(`Ticket not found or donor ID doesn't match`);
     }
     
+    const oldStatus = ticket.status;
+    
     // If there's an active call, end it as part of the transaction
     if (ticket.activeCallId) {
-      return this.prisma.$transaction(async (tx) => {
+      const updatedTicket = await this.prisma.$transaction(async (tx) => {
         // End the active call
         await tx.call.update({
           where: { id: ticket.activeCallId as string },
@@ -267,14 +387,166 @@ export class TicketsService {
           }
         });
       }) as unknown as Ticket;
+      
+      // Emit call ended event
+      this.textMessagesGateway.notifyCallEnded(ticketId, ticket.activeCallId as string);
+      
+      // Emit status change event
+      this.textMessagesGateway.notifyTicketStatusChanged(ticketId, oldStatus, TicketStatus.RESOLVED);
+      
+      return updatedTicket;
     } else {
       // No active call, just resolve the ticket
-      return this.prisma.ticket.update({
+      const updatedTicket = await this.prisma.ticket.update({
         where: { id: ticketId },
         data: {
           status: TicketStatus.RESOLVED
         }
       }) as unknown as Ticket;
+      
+      // Emit status change event
+      this.textMessagesGateway.notifyTicketStatusChanged(ticketId, oldStatus, TicketStatus.RESOLVED);
+      
+      return updatedTicket;
     }
+  }
+
+  async getDashboardTickets(adminId?: number): Promise<any> {
+    // Get all new tickets - these can be either unassigned or assigned
+    const newTickets = await this.prisma.ticket.findMany({
+      where: { 
+        status: TicketStatus.NEW,
+        // If adminId provided, return both unassigned tickets AND tickets assigned to this admin
+        ...(adminId ? { 
+          OR: [
+            { adminId: null },  // Unassigned tickets
+            { adminId }         // Tickets assigned to this admin
+          ]
+        } : {})
+      },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        admin: {
+          select: {
+            id: true,
+            name: true,
+            username: true,
+            avatar: true
+          }
+        }
+      }
+    });
+
+    const pendingTickets = await this.prisma.ticket.findMany({
+      where: { 
+        status: TicketStatus.PENDING,
+        ...(adminId ? { adminId } : {})
+      },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        admin: {
+          select: {
+            id: true,
+            name: true,
+            username: true,
+            avatar: true
+          }
+        }
+      }
+    });
+
+    // Get active call tickets with admin assigned
+    const activeCallTickets = await this.prisma.ticket.findMany({
+      where: { 
+        status: TicketStatus.ACTIVE_CALL,
+        ...(adminId ? { adminId } : {}),
+        adminId: { not: null } // Only get tickets with admin assigned
+      },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        admin: {
+          select: {
+            id: true,
+            name: true,
+            username: true,
+            avatar: true
+          }
+        },
+        calls: {
+          where: { status: 'active' },
+          take: 1
+        }
+      }
+    });
+
+    // Get active call tickets that don't have an admin assigned - separate query
+    const unassignedActiveCallTickets = await this.prisma.ticket.findMany({
+      where: { 
+        status: TicketStatus.ACTIVE_CALL,
+        adminId: null
+      },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        calls: {
+          where: { status: 'active' },
+          take: 1
+        }
+      }
+    });
+
+    // Only include unassigned active call tickets if either no adminId is provided (super admin)
+    // or if adminId is provided (regular admin) but we want to show unassigned tickets too
+    const allActiveCallTickets = [
+      ...activeCallTickets,
+      ...unassignedActiveCallTickets
+    ];
+
+    // Tickets currently assigned to the admin with 'transferred' status
+    const transferredTickets = await this.prisma.ticket.findMany({
+      where: { 
+        status: TicketStatus.TRANSFERRED,
+        ...(adminId ? { adminId } : {})
+      },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        admin: {
+          select: {
+            id: true,
+            name: true,
+            username: true,
+            avatar: true
+          }
+        }
+      }
+    });
+
+    // Calculate counts
+    const newCount = newTickets.length;
+    const pendingCount = pendingTickets.length;
+    const activeCallCount = allActiveCallTickets.length;
+    const transferredCount = transferredTickets.length;
+    
+    // Count unassigned tickets for each category
+    const unassignedNewCount = newTickets.filter(t => !t.adminId).length;
+    const unassignedActiveCallCount = unassignedActiveCallTickets.length;
+    
+    return {
+      newTickets,
+      pendingTickets,
+      activeCallTickets: allActiveCallTickets,
+      transferredTickets,
+      counts: {
+        new: newCount,
+        pending: pendingCount,
+        activeCall: activeCallCount,
+        transferred: transferredCount,
+        total: newCount + pendingCount + activeCallCount + transferredCount,
+        unassigned: {
+          new: unassignedNewCount,
+          activeCall: unassignedActiveCallCount,
+          total: unassignedNewCount + unassignedActiveCallCount
+        }
+      }
+    };
   }
 } 

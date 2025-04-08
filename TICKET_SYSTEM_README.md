@@ -255,9 +255,19 @@ CREATE TABLE ticket_transfers (
     "adminId": number|null,
     "activeCallId": "uuid"|null,
     "createdAt": "timestamp",
-    "updatedAt": "timestamp"
+    "updatedAt": "timestamp",
+    "activeCall": {
+      "id": "string",
+      "dailyRoomUrl": "string",
+      "adminToken": "string",
+      "userToken": "string",
+      "status": "string",
+      "callType": "string",
+      "startedAt": "string"
+    }
   }
   ```
+  Note: The `activeCall` field is only included when there is an active call associated with the ticket.
 
 #### Update Ticket
 - **URL**: `PUT /api/v1/tickets/:id`
@@ -309,7 +319,16 @@ CREATE TABLE ticket_transfers (
     "adminId": number,           // Will be set to current admin's ID
     "activeCallId": "uuid"|null,
     "createdAt": "timestamp",
-    "updatedAt": "timestamp"
+    "updatedAt": "timestamp",
+    "activeCall": {              // Only included if there is an active call
+      "id": "uuid",
+      "dailyRoomUrl": "string",
+      "adminToken": "string",
+      "userToken": "string",
+      "status": "active",
+      "callType": "string",
+      "startedAt": "timestamp"
+    }
   }
   ```
 
@@ -418,6 +437,107 @@ CREATE TABLE ticket_transfers (
     },
     // Additional transfers...
   ]
+  ```
+
+#### Get Dashboard Tickets
+- **URL**: `GET /api/v1/tickets/dashboard`
+- **Authentication**: JWT Auth (Admin)
+- **Description**: Get tickets grouped by status categories for dashboard display. For regular admins, returns both unassigned tickets and their assigned tickets. For super admins, returns all tickets.
+- **Response**: 200 OK
+  ```json
+  {
+    "newTickets": [
+      {
+        "id": "uuid",
+        "donorId": "string",
+        "donorEmail": "string",
+        "description": "string",
+        "status": "new",
+        "adminId": number|null,
+        "admin": {
+          "id": number,
+          "name": "string",
+          "username": "string",
+          "avatar": "string"
+        },
+        // Other ticket properties...
+      },
+      // Additional new tickets...
+    ],
+    "pendingTickets": [
+      {
+        "id": "uuid",
+        "donorId": "string",
+        "donorEmail": "string",
+        "description": "string",
+        "status": "pending",
+        "adminId": number,
+        "admin": {
+          "id": number,
+          "name": "string",
+          "username": "string",
+          "avatar": "string"
+        },
+        // Other ticket properties...
+      },
+      // Additional pending tickets...
+    ],
+    "activeCallTickets": [
+      {
+        "id": "uuid",
+        "donorId": "string",
+        "donorEmail": "string",
+        "description": "string",
+        "status": "active_call",
+        "adminId": number|null,
+        "admin": {
+          "id": number,
+          "name": "string",
+          "username": "string",
+          "avatar": "string"
+        },
+        // Other ticket properties...
+        "calls": [
+          {
+            "id": "uuid",
+            "status": "active",
+            // Other call properties...
+          }
+        ]
+      },
+      // Additional active call tickets...
+    ],
+    "transferredTickets": [
+      {
+        "id": "uuid",
+        "donorId": "string",
+        "donorEmail": "string",
+        "description": "string",
+        "status": "transferred",
+        "adminId": number,
+        "admin": {
+          "id": number,
+          "name": "string",
+          "username": "string",
+          "avatar": "string"
+        },
+        // Other ticket properties...
+      },
+      // Additional transferred tickets...
+    ],
+    "counts": {
+      "new": 5,
+      "pending": 12,
+      "activeCall": 3,
+      "transferred": 2,
+      "total": 22,
+      "unassigned": {
+        "new": 3,
+        "activeCall": 1,
+        "total": 4
+      }
+    }
+  }
   ```
 
 #### Get Donor Ticket History

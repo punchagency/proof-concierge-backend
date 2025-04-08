@@ -87,6 +87,53 @@ export class TicketsController {
     return this.ticketsService.findAll(status);
   }
 
+  @Get('dashboard')
+  @Version('1')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get tickets grouped by status for dashboard' })
+  @ApiResponse({
+    status: 200,
+    description: 'Tickets grouped by status categories',
+    schema: {
+      type: 'object',
+      properties: {
+        newTickets: {
+          type: 'array',
+          items: { $ref: '#/components/schemas/Ticket' }
+        },
+        pendingTickets: {
+          type: 'array',
+          items: { $ref: '#/components/schemas/Ticket' }
+        },
+        activeCallTickets: {
+          type: 'array',
+          items: { $ref: '#/components/schemas/Ticket' }
+        },
+        transferredTickets: {
+          type: 'array',
+          items: { $ref: '#/components/schemas/Ticket' }
+        },
+        counts: {
+          type: 'object',
+          properties: {
+            new: { type: 'number' },
+            pending: { type: 'number' },
+            activeCall: { type: 'number' },
+            transferred: { type: 'number' },
+            total: { type: 'number' }
+          }
+        }
+      }
+    }
+  })
+  async getDashboardTickets(@Request() req) {
+    // If super admin, get all tickets; otherwise filter by adminId
+    const adminId = req.user.role === 'SUPER_ADMIN' ? undefined : req.user.userId;
+    console.log('user', req.user);
+    return this.ticketsService.getDashboardTickets(adminId);
+  }
+
   @Get(':id')
   @Version('1')
   @UseGuards(JwtAuthGuard)
@@ -125,7 +172,11 @@ export class TicketsController {
     type: Ticket,
   })
   async assignToSelf(@Param('id') id: string, @Request() req) {
-    return this.ticketsService.assignToAdmin(id, req.user.id);
+
+    const adminId = req.user.role === 'SUPER_ADMIN' ? undefined : req.user.userId;
+    console.log('adminId', adminId);
+
+    return this.ticketsService.assignToAdmin(id, adminId);
   }
 
   @Post(':id/transfer')
@@ -145,7 +196,7 @@ export class TicketsController {
   ) {
     return this.ticketsService.transferTicket(
       id,
-      req.user.id,
+      req.user.userId,
       transferTicketDto,
     );
   }

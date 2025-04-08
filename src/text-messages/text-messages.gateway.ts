@@ -13,7 +13,7 @@ import { JwtService } from '@nestjs/jwt';
 
 @WebSocketGateway({
   cors: {
-    origin: 'http://localhost:3000', // your frontend URL
+    origin: 'http://localhost:3000',
     credentials: true,
   },
   path: '/socket',
@@ -226,6 +226,9 @@ export class TextMessagesGateway
     };
     
     this.server.to(`ticket-${ticketId}`).emit('activeCallStarted', eventData);
+    // Also notify all admins for dashboard updates
+    this.server.to('admins').emit('activeCallStarted', eventData);
+    
     this.logger.log(`Emitted activeCallStarted event. Ticket ID: ${ticketId}, Call ID: ${callData.id}`);
     
     return eventData;
@@ -240,7 +243,72 @@ export class TextMessagesGateway
     };
     
     this.server.to(`ticket-${ticketId}`).emit('activeCallEnded', eventData);
+    // Also notify all admins for dashboard updates
+    this.server.to('admins').emit('activeCallEnded', eventData);
+    
     this.logger.log(`Emitted activeCallEnded event. Ticket ID: ${ticketId}, Call ID: ${callId}`);
+    
+    return eventData;
+  }
+
+  // Notify when a new ticket is created
+  notifyNewTicket(ticketData: any) {
+    const eventData = {
+      id: ticketData.id,
+      donorId: ticketData.donorId,
+      donorEmail: ticketData.donorEmail,
+      description: ticketData.description,
+      status: ticketData.status,
+      callType: ticketData.callType,
+      createdAt: ticketData.createdAt,
+      timestamp: new Date().toISOString(),
+    };
+    
+    // Broadcast to all admins
+    this.server.to('admins').emit('newTicket', eventData);
+    this.logger.log(`Emitted newTicket event. Ticket ID: ${ticketData.id}`);
+    
+    return eventData;
+  }
+  
+  // Notify when a ticket status changes
+  notifyTicketStatusChanged(ticketId: string, oldStatus: string, newStatus: string, adminId?: number) {
+    const eventData = {
+      ticketId,
+      oldStatus,
+      newStatus,
+      adminId,
+      timestamp: new Date().toISOString(),
+    };
+    
+    // Notify the specific ticket room
+    this.server.to(`ticket-${ticketId}`).emit('ticketStatusChanged', eventData);
+    // Also notify all admins for dashboard updates
+    this.server.to('admins').emit('ticketStatusChanged', eventData);
+    
+    this.logger.log(`Emitted ticketStatusChanged event. Ticket ID: ${ticketId}, Status: ${oldStatus} -> ${newStatus}`);
+    
+    return eventData;
+  }
+  
+  // Notify when a ticket is transferred
+  notifyTicketTransferred(ticketId: string, fromAdminId: number, toAdminId: number) {
+    const eventData = {
+      ticketId,
+      fromAdminId,
+      toAdminId,
+      timestamp: new Date().toISOString(),
+    };
+    
+    // Notify the specific ticket room
+    this.server.to(`ticket-${ticketId}`).emit('ticketTransferred', eventData);
+    // Also notify specific admins
+    this.server.to(`user-${fromAdminId}`).emit('ticketTransferred', eventData);
+    this.server.to(`user-${toAdminId}`).emit('ticketTransferred', eventData);
+    // Also notify all admins for dashboard updates
+    this.server.to('admins').emit('ticketTransferred', eventData);
+    
+    this.logger.log(`Emitted ticketTransferred event. Ticket ID: ${ticketId}, From: ${fromAdminId}, To: ${toAdminId}`);
     
     return eventData;
   }
