@@ -168,7 +168,7 @@ enum SenderType {
 
 // New models for the ticket system
 model Ticket {
-  id             String    @id @default(uuid())
+  id             String    @id
   donorId        String
   donorEmail     String
   description    String?   @db.Text

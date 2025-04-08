@@ -6,6 +6,7 @@ import { TransferTicketDto } from '../dto/transfer-ticket.dto';
 import { Ticket, TicketStatus } from '../entities/ticket.entity';
 import { CallStatus } from '../../calls/entities/call.entity';
 import { TextMessagesGateway } from '../../text-messages/text-messages.gateway';
+import * as crypto from 'crypto';
 
 @Injectable()
 export class TicketsService {
@@ -14,9 +15,40 @@ export class TicketsService {
     private textMessagesGateway: TextMessagesGateway
   ) {}
 
+  // Helper method to generate a short ID (5 characters)
+  private generateShortId(length = 5): string {
+    // Use a mix of uppercase letters and numbers for better readability
+    const characters = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Removed similar looking characters like 0, O, 1, I
+    let result = '';
+    const randomBytes = crypto.randomBytes(length);
+    
+    for (let i = 0; i < length; i++) {
+      const randomByte = randomBytes[i] % characters.length;
+      result += characters.charAt(randomByte);
+    }
+    
+    return result;
+  }
+
   async create(createTicketDto: CreateTicketDto): Promise<Ticket> {
+    // Generate a unique short ID
+    let shortId = this.generateShortId();
+    let existingTicket = await this.prisma.ticket.findUnique({
+      where: { id: shortId }
+    });
+    
+    // If a ticket with this ID already exists, keep generating new IDs until we find a unique one
+    while (existingTicket) {
+      shortId = this.generateShortId();
+      existingTicket = await this.prisma.ticket.findUnique({
+        where: { id: shortId }
+      });
+    }
+    
+    // Create the ticket with the unique short ID
     const ticket = await this.prisma.ticket.create({
       data: {
+        id: shortId, // Use the short ID instead of letting Prisma generate a UUID
         donorId: createTicketDto.donorId,
         donorEmail: createTicketDto.donorEmail,
         description: createTicketDto.description,
