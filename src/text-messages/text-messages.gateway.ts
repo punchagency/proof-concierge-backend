@@ -13,7 +13,7 @@ import { JwtService } from '@nestjs/jwt';
 
 @WebSocketGateway({
   cors: {
-    origin: 'http://localhost:3000',
+    origin: ['http://localhost:3000', 'https://proof-client.vercel.app', 'https://collectwithproof.vercel.app/'],
     credentials: true,
   },
   path: '/socket',
