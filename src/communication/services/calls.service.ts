@@ -606,12 +606,12 @@ export class CallsService implements OnModuleInit {
           );
         }
         
-        // Send email notification to the assigned admin
-        await this.emailService.sendCallRequestNotification(
-          queryId,
-          query.assignedToUser.id,
-          callRequest.message || undefined
-        );
+        // // Send email notification to the assigned admin
+        // await this.emailService.sendNewQueryNotification(
+        //   queryId,
+        //   query.assignedToUser.id,
+        //   callRequest.message || undefined
+        // );
       }
 
       return {
@@ -754,14 +754,14 @@ export class CallsService implements OnModuleInit {
         );
       }
       
-      // Send email notification to the assigned admin
-      if (adminId) {
-        await this.emailService.sendDirectCallStartedNotification(
-          queryId,
-          adminId,
-          callType
-        );
-      }
+      // // Send email notification to the assigned admin
+      // if (adminId) {
+      //   await this.emailService.sendDirectCallStartedNotification(
+      //     queryId,
+      //     adminId,
+      //     callType
+      //   );
+      // }
 
       return {
         callSession,

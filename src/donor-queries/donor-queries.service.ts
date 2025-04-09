@@ -393,13 +393,13 @@ export class DonorQueriesService {
       user.name
     );
     
-    // Send email notification to the admin who received the transfer
-    await this.emailService.sendQueryTransferNotification(
-      id,
-      transferredToUserId,
-      transferredBy || 'an admin',
-      transferNote
-    );
+    // // Send email notification to the admin who received the transfer
+    // await this.emailService.sendQueryTransferNotification(
+    //   id,
+    //   transferredToUserId,
+    //   transferredBy || 'an admin',
+    //   transferNote
+    // );
     
     return updatedQuery;
   }

@@ -18,21 +18,6 @@ export class TicketsService {
     private emailService: EmailService,
   ) {}
 
-  // Helper method to generate a short ID (5 characters)
-  private generateShortId(length = 5): string {
-    // Use a mix of uppercase letters and numbers for better readability
-    const characters = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Removed similar looking characters like 0, O, 1, I
-    let result = '';
-    const randomBytes = crypto.randomBytes(length);
-
-    for (let i = 0; i < length; i++) {
-      const randomByte = randomBytes[i] % characters.length;
-      result += characters.charAt(randomByte);
-    }
-
-    return result;
-  }
-
   async create(createTicketDto: CreateTicketDto): Promise<Ticket> {
     // Generate a unique short ID
     let shortId;
@@ -292,7 +277,7 @@ export class TicketsService {
 
     // Send email notification to the admin who received the transfer
     await this.emailService.sendQueryTransferNotification(
-      parseInt(id, 10), // Convert string ID to number
+      id, // Convert string ID to number
       transferDto.toAdminId,
       fromAdmin?.name || 'an admin',
       transferDto.transferNotes,
