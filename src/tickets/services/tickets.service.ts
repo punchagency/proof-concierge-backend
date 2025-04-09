@@ -58,6 +58,18 @@ export class TicketsService {
       },
     }) as unknown as Ticket;
     
+    // Create a text message with the ticket description if provided
+    if (createTicketDto.description) {
+      await this.prisma.textMessage.create({
+        data: {
+          ticketId: ticket.id,
+          senderId: createTicketDto.donorId,
+          senderType: 'donor',
+          content: createTicketDto.description,
+        },
+      });
+    }
+    
     // Emit event for new ticket
     this.textMessagesGateway.notifyNewTicket(ticket);
     
@@ -75,7 +87,15 @@ export class TicketsService {
     const ticket = await this.prisma.ticket.findUnique({
       where: { id },
       include: {
-        activeCall: true
+        activeCall: true,
+        admin: {
+          select: {
+            id: true,
+            name: true,
+            username: true,
+            avatar: true
+          }
+        }
       }
     });
     
