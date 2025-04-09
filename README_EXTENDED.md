@@ -1851,3 +1851,108 @@ curl --location --request GET 'http://localhost:3000/messages/donor/donor_001' \
   ]
 }
 ```
+
+#### PUT /users/me/password
+
+**Purpose:** Change the password for the currently authenticated user.
+
+**Request:**
+- **Method:** PUT
+- **URL:** `/users/me/password`
+- **Headers:** Requires JWT Authentication and Admin Role
+- **Body:**
+```json
+{
+  "currentPassword": "your_current_password",
+  "newPassword": "your_new_password"
+}
+```
+
+**cURL Example:**
+```bash
+curl --location --request PUT 'http://localhost:3000/users/me/password' \
+--header 'Authorization: Bearer YOUR_TOKEN' \
+--header 'Content-Type: application/json' \
+--data-raw '{
+  "currentPassword": "your_current_password",
+  "newPassword": "your_new_password"
+}'
+```
+
+**Response:**
+```json
+{
+  "id": 123,
+  "username": "admin.user",
+  "name": "Admin User",
+  "email": "admin@example.com",
+  "role": "ADMIN",
+  "avatar": "data:image/jpeg;base64,...",
+  "isActive": true,
+  "createdAt": "2023-10-10T12:00:00.000Z",
+  "updatedAt": "2023-10-10T12:00:00.000Z"
+}
+```
+
+**Error Responses:**
+- **401 Unauthorized** - Current password is incorrect
+- **400 Bad Request** - New password must be different from the current password
+- **400 Bad Request** - New password must be at least 8 characters long
+
+**Notes:**
+- The endpoint requires the current password to be provided for security verification.
+- The new password must be at least 8 characters long.
+- The new password must be different from the current password.
+- The response includes the updated user object with the password field omitted for security.
+
+#### POST /users/me/avatar
+
+**Purpose:** Upload a new avatar image for the currently authenticated user.
+
+**Request:**
+- **Method:** POST
+- **URL:** `/users/me/avatar`
+- **Headers:** Requires JWT Authentication and Admin Role
+- **Body:**
+```json
+{
+  "avatar": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAAIAAgDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAb/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCdABmX/9k="
+}
+```
+
+**cURL Example:**
+```bash
+curl --location --request POST 'http://localhost:3000/users/me/avatar' \
+--header 'Authorization: Bearer YOUR_TOKEN' \
+--header 'Content-Type: application/json' \
+--data-raw '{
+  "avatar": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAAIAAgDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAb/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCdABmX/9k="
+}'
+```
+
+**Response:**
+```json
+{
+  "id": 123,
+  "username": "admin.user",
+  "name": "Admin User",
+  "email": "admin@example.com",
+  "role": "ADMIN",
+  "avatar": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAAIAAgDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAb/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCdABmX/9k=",
+  "isActive": true,
+  "createdAt": "2023-10-10T12:00:00.000Z",
+  "updatedAt": "2023-10-10T12:00:00.000Z"
+}
+```
+
+**Error Responses:**
+- **400 Bad Request** - No image provided
+- **400 Bad Request** - Invalid image format. Must be a valid base64 encoded JPEG, PNG, or GIF
+- **400 Bad Request** - Image size exceeds the limit of 4MB
+
+**Notes:**
+- The avatar must be provided as a base64-encoded image string.
+- Supported image formats are JPEG, PNG, and GIF.
+- The maximum file size is 4MB.
+- The base64 string should include the data URI prefix (e.g., `data:image/jpeg;base64,`).
+- The response includes the updated user object with the new avatar.

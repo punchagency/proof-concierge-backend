@@ -2,8 +2,8 @@ import { Injectable, BadRequestException } from '@nestjs/common';
 
 @Injectable()
 export class FileUploadService {
-  // Maximum size in bytes (1MB)
-  private readonly MAX_FILE_SIZE = 1 * 1024 * 1024;
+  // Maximum size in bytes (4MB)
+  private readonly MAX_FILE_SIZE = 4 * 1024 * 1024;
   
   constructor() {}
 
@@ -23,7 +23,7 @@ export class FileUploadService {
     // Check file size (base64 is ~33% larger than binary)
     const sizeInBytes = Math.ceil((base64Data.length * 3) / 4);
     if (sizeInBytes > this.MAX_FILE_SIZE) {
-      throw new BadRequestException(`Image size exceeds the limit of 1MB`);
+      throw new BadRequestException(`Image size exceeds the limit of 4MB`);
     }
 
     // Return the base64 string directly
