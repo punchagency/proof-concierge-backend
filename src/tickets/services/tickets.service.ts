@@ -75,10 +75,73 @@ export class TicketsService {
   }
 
   async findAll(status?: string): Promise<Ticket[]> {
+    console.log('status', status);
     return this.prisma.ticket.findMany({
       where: status ? { status } : undefined,
       orderBy: { createdAt: 'desc' },
+      include: {
+        admin: {
+          select: {
+            id: true,
+            name: true,
+            username: true,
+            avatar: true,
+          },
+        },
+      },
     }) as unknown as Ticket[];
+  }
+
+  async findTransferredTickets(): Promise<any[]> {
+    const tickets = await this.prisma.ticket.findMany({
+      where: { status: TicketStatus.TRANSFERRED },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        admin: {
+          select: {
+            id: true,
+            name: true,
+            username: true,
+            avatar: true,
+          },
+        },
+      },
+    });
+
+    // For each ticket, get the transfer history
+    const ticketsWithTransfers = await Promise.all(
+      tickets.map(async (ticket) => {
+        const transfers = await this.prisma.ticketTransfer.findMany({
+          where: { ticketId: ticket.id },
+          orderBy: { transferredAt: 'desc' },
+          include: {
+            fromAdmin: {
+              select: {
+                id: true,
+                name: true,
+                username: true,
+                avatar: true,
+              },
+            },
+            toAdmin: {
+              select: {
+                id: true,
+                name: true,
+                username: true,
+                avatar: true,
+              },
+            },
+          },
+        });
+
+        return {
+          ...ticket,
+          transfers,
+        };
+      }),
+    );
+
+    return ticketsWithTransfers as any[];
   }
 
   async findOne(id: string): Promise<any> {

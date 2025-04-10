@@ -25,6 +25,7 @@ import { Ticket } from './entities/ticket.entity';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CallsService } from '../calls/services/calls.service';
 import { InitiatedBy } from '../calls/entities/call.entity';
+import { TicketStatus } from './entities/ticket.entity';
 
 @ApiTags('tickets')
 @Controller({
@@ -134,6 +135,71 @@ export class TicketsController {
     return this.ticketsService.getDashboardTickets(adminId);
   }
 
+  @Get('pending')
+  @Version('1')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get all pending tickets' })
+  @ApiResponse({ status: 200, description: 'List of pending tickets', type: [Ticket] })
+  async getPendingTickets(@Request() req) {
+    return this.ticketsService.findAll(TicketStatus.PENDING);
+  }
+
+  @Get('active-call')
+  @Version('1')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get all tickets with active calls' })
+  @ApiResponse({ status: 200, description: 'List of tickets with active calls', type: [Ticket] })
+  async getActiveCallTickets(@Request() req) {
+    return this.ticketsService.findAll(TicketStatus.ACTIVE_CALL);
+  }
+
+  @Get('transferred')
+  @Version('1')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get all transferred tickets' })
+  @ApiResponse({ status: 200, description: 'List of transferred tickets', type: [Ticket] })
+  async getTransferredTickets(@Request() req) {
+    return this.ticketsService.findTransferredTickets();
+  }
+
+  @Get('resolved')
+  @Version('1')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get all resolved tickets' })
+  @ApiResponse({ status: 200, description: 'List of resolved tickets', type: [Ticket] })
+  async getResolvedTickets(@Request() req) {
+    return this.ticketsService.findAll(TicketStatus.RESOLVED);
+  }
+
+  @Get('donor/:donorId')
+  @Version('1')
+  @ApiOperation({ summary: 'Get ticket history for a donor' })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'List of donor tickets with limited fields',
+    schema: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          id: { type: 'string' },
+          description: { type: 'string', nullable: true },
+          status: { type: 'string' },
+          createdAt: { type: 'string', format: 'date-time' },
+          updatedAt: { type: 'string', format: 'date-time' },
+          callType: { type: 'string', nullable: true }
+        }
+      }
+    }
+  })
+  async findByDonor(@Param('donorId') donorId: string) {
+    return this.ticketsService.findByDonorId(donorId);
+  }
+
   @Get(':id')
   @Version('1')
   @UseGuards(JwtAuthGuard)
@@ -142,6 +208,47 @@ export class TicketsController {
   @ApiResponse({ status: 200, description: 'Ticket details', type: Ticket })
   async findOne(@Param('id') id: string) {
     return this.ticketsService.findOne(id);
+  }
+
+  @Get(':id/donor/:donorId')
+  @Version('1')
+  @ApiOperation({ summary: 'Get ticket details for a specific donor' })
+  @ApiResponse({
+    status: 200,
+    description: 'Ticket details including active call if available',
+    schema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string' },
+        donorId: { type: 'string' },
+        donorEmail: { type: 'string' },
+        description: { type: 'string', nullable: true },
+        status: { type: 'string' },
+        callRequested: { type: 'boolean' },
+        callType: { type: 'string', nullable: true },
+        activeCallId: { type: 'string', nullable: true },
+        createdAt: { type: 'string', format: 'date-time' },
+        updatedAt: { type: 'string', format: 'date-time' },
+        activeCall: {
+          type: 'object',
+          nullable: true,
+          properties: {
+            id: { type: 'string' },
+            callType: { type: 'string' },
+            dailyRoomUrl: { type: 'string' },
+            userToken: { type: 'string' },
+            status: { type: 'string' },
+            startedAt: { type: 'string', format: 'date-time' }
+          }
+        }
+      }
+    }
+  })
+  async findTicketForDonor(
+    @Param('id') id: string,
+    @Param('donorId') donorId: string
+  ) {
+    return this.ticketsService.findTicketForDonor(id, donorId);
   }
 
   @Put(':id')
@@ -237,72 +344,6 @@ export class TicketsController {
   @ApiResponse({ status: 200, description: 'List of transfers' })
   async getTransfers(@Param('id') id: string) {
     return this.ticketsService.getTicketTransfers(id);
-  }
-
-  @Get('donor/:donorId')
-  @Version('1')
-  @ApiOperation({ summary: 'Get ticket history for a donor' })
-  @ApiResponse({ 
-    status: 200, 
-    description: 'List of donor tickets with limited fields',
-    schema: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: {
-          id: { type: 'string' },
-          description: { type: 'string', nullable: true },
-          status: { type: 'string' },
-          createdAt: { type: 'string', format: 'date-time' },
-          updatedAt: { type: 'string', format: 'date-time' },
-          callType: { type: 'string', nullable: true }
-        }
-      }
-    }
-  })
-  async findByDonor(@Param('donorId') donorId: string) {
-    return this.ticketsService.findByDonorId(donorId);
-  }
-
-  @Get(':id/donor/:donorId')
-  @Version('1')
-  @ApiOperation({ summary: 'Get ticket details for a specific donor' })
-  @ApiResponse({
-    status: 200,
-    description: 'Ticket details including active call if available',
-    schema: {
-      type: 'object',
-      properties: {
-        id: { type: 'string' },
-        donorId: { type: 'string' },
-        donorEmail: { type: 'string' },
-        description: { type: 'string', nullable: true },
-        status: { type: 'string' },
-        callRequested: { type: 'boolean' },
-        callType: { type: 'string', nullable: true },
-        activeCallId: { type: 'string', nullable: true },
-        createdAt: { type: 'string', format: 'date-time' },
-        updatedAt: { type: 'string', format: 'date-time' },
-        activeCall: {
-          type: 'object',
-          nullable: true,
-          properties: {
-            id: { type: 'string' },
-            callType: { type: 'string' },
-            dailyRoomUrl: { type: 'string' },
-            userToken: { type: 'string' },
-            status: { type: 'string' },
-            startedAt: { type: 'string', format: 'date-time' }
-          }
-        }
-      }
-    }
-  })
-  async findTicketForDonor(
-    @Param('id') id: string,
-    @Param('donorId') donorId: string
-  ) {
-    return this.ticketsService.findTicketForDonor(id, donorId);
   }
 
   @Put(':id/donor/:donorId/resolve')

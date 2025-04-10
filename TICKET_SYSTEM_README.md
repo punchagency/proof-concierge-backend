@@ -236,6 +236,102 @@ CREATE TABLE ticket_transfers (
   ]
   ```
 
+#### Get Pending Tickets
+- **URL**: `GET /api/v1/tickets/pending`
+- **Authentication**: JWT Auth (Admin)
+- **Description**: Get all tickets with PENDING status
+- **Response**: 200 OK
+  ```json
+  [
+    {
+      "id": "uuid",
+      "donorId": "string",
+      "donorEmail": "string",
+      "description": "string",
+      "callRequested": boolean,
+      "callType": "string",
+      "status": "pending",
+      "adminId": number|null,
+      "activeCallId": "uuid"|null,
+      "createdAt": "timestamp",
+      "updatedAt": "timestamp"
+    },
+    // Additional pending tickets...
+  ]
+  ```
+
+#### Get Active Call Tickets
+- **URL**: `GET /api/v1/tickets/active-call`
+- **Authentication**: JWT Auth (Admin)
+- **Description**: Get all tickets with ACTIVE_CALL status
+- **Response**: 200 OK
+  ```json
+  [
+    {
+      "id": "uuid",
+      "donorId": "string",
+      "donorEmail": "string",
+      "description": "string",
+      "callRequested": boolean,
+      "callType": "string",
+      "status": "active_call",
+      "adminId": number|null,
+      "activeCallId": "uuid"|null,
+      "createdAt": "timestamp",
+      "updatedAt": "timestamp"
+    },
+    // Additional active call tickets...
+  ]
+  ```
+
+#### Get Transferred Tickets
+- **URL**: `GET /api/v1/tickets/transferred`
+- **Authentication**: JWT Auth (Admin)
+- **Description**: Get all tickets with TRANSFERRED status
+- **Response**: 200 OK
+  ```json
+  [
+    {
+      "id": "uuid",
+      "donorId": "string",
+      "donorEmail": "string",
+      "description": "string",
+      "callRequested": boolean,
+      "callType": "string",
+      "status": "transferred",
+      "adminId": number|null,
+      "activeCallId": "uuid"|null,
+      "createdAt": "timestamp",
+      "updatedAt": "timestamp"
+    },
+    // Additional transferred tickets...
+  ]
+  ```
+
+#### Get Resolved Tickets
+- **URL**: `GET /api/v1/tickets/resolved`
+- **Authentication**: JWT Auth (Admin)
+- **Description**: Get all tickets with RESOLVED status
+- **Response**: 200 OK
+  ```json
+  [
+    {
+      "id": "uuid",
+      "donorId": "string",
+      "donorEmail": "string",
+      "description": "string",
+      "callRequested": boolean,
+      "callType": "string",
+      "status": "resolved",
+      "adminId": number|null,
+      "activeCallId": "uuid"|null,
+      "createdAt": "timestamp",
+      "updatedAt": "timestamp"
+    },
+    // Additional resolved tickets...
+  ]
+  ```
+
 #### Get Ticket Details
 - **URL**: `GET /api/v1/tickets/:id`
 - **Authentication**: JWT Auth (Admin)
