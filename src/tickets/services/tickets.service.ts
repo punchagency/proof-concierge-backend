@@ -6,7 +6,6 @@ import { TransferTicketDto } from '../dto/transfer-ticket.dto';
 import { Ticket, TicketStatus } from '../entities/ticket.entity';
 import { CallStatus } from '../../calls/entities/call.entity';
 import { TextMessagesGateway } from '../../text-messages/text-messages.gateway';
-import * as crypto from 'crypto';
 import { EmailService } from '../../notifications/email.service';
 import { nanoid } from 'nanoid';
 
