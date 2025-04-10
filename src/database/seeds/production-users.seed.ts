@@ -68,7 +68,7 @@ export const productionUsersSeed = async (
         username: 'proof_admin',
         password: await hashPassword(adminPassword),
         name: 'Proof Admin',
-        email: 'admin@proofconcierge.com',
+        email: 'yeet.meko@gmail.com',
         role: UserRole.ADMIN,
         isActive: true,
       },
