@@ -8,7 +8,6 @@
   "scripts": {
     "prebuild": "node skip-prebuild.js || (npx prisma migrate reset --force && npm run seed:production-admins)",
     "build": "nest build",
-    "heroku-postbuild": "npm install && npm run build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
     "start:dev": "nest start --watch",
@@ -57,7 +56,7 @@
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",
     "dotenv": "^16.4.7",
-    "express": "^4.18.2",
+    "express": "^5.1.0",
     "firebase": "^11.3.1",
     "firebase-admin": "^13.1.0",
     "jsonwebtoken": "^9.0.2",
