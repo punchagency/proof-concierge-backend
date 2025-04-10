@@ -90,8 +90,8 @@ importers:
         specifier: ^9.0.2
         version: 9.0.2
       nanoid:
-        specifier: ^5.1.5
-        version: 5.1.5
+        specifier: ^3.3.4
+        version: 3.3.4
       passport:
         specifier: ^0.7.0
         version: 0.7.0
@@ -3756,9 +3756,9 @@ packages:
     resolution: {integrity: sha512-WWdIxpyjEn+FhQJQQv9aQAYlHoNVdzIzUySNV1gHUPDSdZJ3yZn7pAAbQcV7B56Mvu881q9FZV+0Vx2xC44VWA==}
     engines: {node: ^18.17.0 || >=20.5.0}
 
-  nanoid@5.1.5:
-    resolution: {integrity: sha512-Ir/+ZpE9fDsNH0hQ3C68uyThDXzYcim2EqcZ8zn8Chtt1iylPT9xXJB0kPCnqzgcEGikO9RxSrh63MsmVCU7Fw==}
-    engines: {node: ^18 || >=20}
+  nanoid@3.3.4:
+    resolution: {integrity: sha512-MqBkQh/OHTS2egovRtLk45wEyNXwF+cokD+1YPf9u5VfJiRdAiRwB2froX5Co9Rh20xs4siNPm8naNotSD6RBw==}
+    engines: {node: ^10 || ^12 || ^13.7 || ^14 || >=15.0.1}
     hasBin: true
 
   natural-compare@1.4.0:
@@ -9119,7 +9119,7 @@ snapshots:
 
   mute-stream@2.0.0: {}
 
-  nanoid@5.1.5: {}
+  nanoid@3.3.4: {}
 
   natural-compare@1.4.0: {}
 
