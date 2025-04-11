@@ -9,122 +9,20 @@ datasource db {
 }
 
 model User {
-  id                 Int           @id @default(autoincrement())
-  username           String        @unique
-  password           String
-  name               String
-  email              String?
-  role               UserRole      @default(ADMIN)
-  avatar             String?
-  isActive           Boolean       @default(true)
-  createdAt          DateTime      @default(now())
-  updatedAt          DateTime      @updatedAt
-  fcmToken           String?
-  callSessions       CallSession[]
-  assignedQueries    DonorQuery[]  @relation("AssignedToUser")
-  resolvedQueries    DonorQuery[]  @relation("ResolvedByUser")
-  transferredQueries DonorQuery[]  @relation("TransferredToUser")
-  receivedMessages   Message[]     @relation("ReceivedMessages")
-  sentMessages       Message[]     @relation("SentMessages")
-  callRequests       CallRequest[] @relation("AdminCallRequests")
-  adminTickets       Ticket[]      @relation("AdminTickets")
-  transfersFrom      TicketTransfer[] @relation("TransferFromAdmin") 
-  transfersTo        TicketTransfer[] @relation("TransferToAdmin")
-}
-
-model DonorQuery {
-  id                  Int           @id @default(autoincrement())
-  donor               String
-  donorId             String
-  test                String
-  stage               String
-  device              String
-  status              QueryStatus   @default(IN_PROGRESS)
-  createdAt           DateTime      @default(now())
-  updatedAt           DateTime      @updatedAt
-  transferredTo       String?
-  transferredToUserId Int?
-  resolvedById        Int?
-  transferNote        String?
-  assignedToId        Int?
-  fcmToken            String?
-  callSessions        CallSession[]
-  assignedToUser      User?         @relation("AssignedToUser", fields: [assignedToId], references: [id])
-  resolvedByUser      User?         @relation("ResolvedByUser", fields: [resolvedById], references: [id])
-  transferredToUser   User?         @relation("TransferredToUser", fields: [transferredToUserId], references: [id])
-  messages            Message[]
-  callRequests        CallRequest[] @relation("QueryCallRequests")
-}
-
-model Message {
-  id            Int          @id @default(autoincrement())
-  content       String
-  isFromAdmin   Boolean      @default(false)
-  senderType    SenderType   @default(ADMIN)
-  createdAt     DateTime     @default(now())
-  queryId       Int?
-  callSessionId Int?
-  updatedAt     DateTime     @updatedAt
+  id            Int              @id @default(autoincrement())
+  username      String           @unique
+  password      String
+  name          String
+  email         String?
+  role          UserRole         @default(ADMIN)
+  avatar        String?
+  isActive      Boolean          @default(true)
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
   fcmToken      String?
-  recipientId   Int?
-  senderId      Int?
-  donorId       String?
-  donorName     String?
-  donorInfo     Json?
-  roomName      String?
-  messageType   MessageType  @default(QUERY)
-  userToken     String?
-  adminToken    String?
-  callRequestId Int?
-  callSession   CallSession? @relation(fields: [callSessionId], references: [id])
-  query         DonorQuery?  @relation(fields: [queryId], references: [id])
-  recipient     User?        @relation("ReceivedMessages", fields: [recipientId], references: [id])
-  sender        User?        @relation("SentMessages", fields: [senderId], references: [id])
-  callRequest   CallRequest? @relation(fields: [callRequestId], references: [id])
-
-  @@index([queryId])
-  @@index([senderId])
-  @@index([recipientId])
-  @@index([callSessionId])
-  @@index([callRequestId])
-  @@index([donorId])
-}
-
-model CallSession {
-  id         Int        @id @default(autoincrement())
-  queryId    Int
-  adminId    Int?
-  roomName   String     @unique
-  startedAt  DateTime?
-  endedAt    DateTime?
-  createdAt  DateTime   @default(now())
-  updatedAt  DateTime   @updatedAt
-  status     CallStatus
-  adminToken String?
-  userToken  String?
-  callType   String     @default("video")
-  admin      User?      @relation(fields: [adminId], references: [id])
-  query      DonorQuery @relation(fields: [queryId], references: [id])
-  messages   Message[]
-
-  @@index([queryId])
-  @@index([adminId])
-}
-
-model CallRequest {
-  id        Int               @id @default(autoincrement())
-  queryId   Int
-  adminId   Int?
-  message   String?
-  status    CallRequestStatus @default(PENDING)
-  createdAt DateTime          @default(now())
-  updatedAt DateTime          @updatedAt
-  query     DonorQuery        @relation("QueryCallRequests", fields: [queryId], references: [id], onDelete: Cascade)
-  admin     User?             @relation("AdminCallRequests", fields: [adminId], references: [id])
-  messages  Message[]
-
-  @@index([queryId])
-  @@index([adminId])
+  adminTickets  Ticket[]         @relation("AdminTickets")
+  transfersFrom TicketTransfer[] @relation("TransferFromAdmin")
+  transfersTo   TicketTransfer[] @relation("TransferToAdmin")
 }
 
 enum UserRole {
@@ -132,11 +30,50 @@ enum UserRole {
   ADMIN
 }
 
-enum QueryStatus {
-  IN_PROGRESS
-  PENDING_REPLY
-  RESOLVED
-  TRANSFERRED
+// New models for the ticket system
+model Ticket {
+  id            String   @id
+  donorId       String
+  donorEmail    String
+  description   String?  @db.Text
+  callRequested Boolean  @default(false)
+  callType      String?
+  status        String
+  adminId       Int?
+  activeCallId  String?  @unique
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relationships
+  admin      User?            @relation("AdminTickets", fields: [adminId], references: [id])
+  activeCall Call?            @relation("ActiveTicketCall", fields: [activeCallId], references: [id])
+  calls      Call[]           @relation("TicketCalls")
+  messages   TextMessage[]
+  transfers  TicketTransfer[]
+
+  @@index([adminId])
+  @@index([donorId])
+}
+
+model Call {
+  id           String    @id @default(uuid())
+  ticketId     String
+  dailyRoomUrl String
+  status       String
+  callType     String
+  initiatedBy  String
+  startedAt    DateTime
+  endedAt      DateTime?
+  userToken    String    @db.Text // Token for donor to join the call
+  adminToken   String    @db.Text // Token for admin to join the call
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  // Relationships
+  ticket       Ticket  @relation("TicketCalls", fields: [ticketId], references: [id], onDelete: Cascade)
+  activeTicket Ticket? @relation("ActiveTicketCall")
+
+  @@index([ticketId])
 }
 
 enum MessageType {
@@ -147,101 +84,42 @@ enum MessageType {
   CALL_ENDED
 }
 
-enum CallStatus {
-  CREATED
-  STARTED
-  ENDED
-}
-
-enum CallRequestStatus {
-  PENDING
-  ACCEPTED
-  REJECTED
-  CANCELLED
-}
-
 enum SenderType {
   ADMIN
   DONOR
   SYSTEM
 }
 
-// New models for the ticket system
-model Ticket {
-  id             String    @id
-  donorId        String
-  donorEmail     String
-  description    String?   @db.Text
-  callRequested  Boolean   @default(false)
-  callType       String?
-  status         String
-  adminId        Int?
-  activeCallId   String?   @unique
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-  
-  // Relationships
-  admin          User?     @relation("AdminTickets", fields: [adminId], references: [id])
-  activeCall     Call?     @relation("ActiveTicketCall", fields: [activeCallId], references: [id])
-  calls          Call[]    @relation("TicketCalls")
-  messages       TextMessage[]
-  transfers      TicketTransfer[]
-
-  @@index([adminId])
-  @@index([donorId])
-}
-
-model Call {
-  id             String    @id @default(uuid())
-  ticketId       String
-  dailyRoomUrl   String
-  status         String
-  callType       String
-  initiatedBy    String
-  startedAt      DateTime
-  endedAt        DateTime?
-  userToken      String    @db.Text  // Token for donor to join the call
-  adminToken     String    @db.Text  // Token for admin to join the call
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-
-  // Relationships
-  ticket         Ticket    @relation("TicketCalls", fields: [ticketId], references: [id], onDelete: Cascade)
-  activeTicket   Ticket?   @relation("ActiveTicketCall")
-
-  @@index([ticketId])
-}
-
 model TextMessage {
-  id             String    @id @default(uuid())
-  ticketId       String
-  senderId       String
-  senderType     String
-  content        String    @db.Text
-  messageType    String    @default("text")
-  isRead         Boolean   @default(false)
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  id          String   @id @default(uuid())
+  ticketId    String
+  senderId    String
+  senderType  String
+  content     String   @db.Text
+  messageType String   @default("text")
+  isRead      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   // Relationships
-  ticket         Ticket    @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
 
   @@index([ticketId])
   @@index([senderId])
 }
 
 model TicketTransfer {
-  id             String    @id @default(uuid())
-  ticketId       String
-  fromAdminId    Int
-  toAdminId      Int
-  transferNotes  String?   @db.Text
-  transferredAt  DateTime  @default(now())
+  id            String   @id @default(uuid())
+  ticketId      String
+  fromAdminId   Int
+  toAdminId     Int
+  transferNotes String?  @db.Text
+  transferredAt DateTime @default(now())
 
   // Relationships
-  ticket         Ticket    @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-  fromAdmin      User      @relation("TransferFromAdmin", fields: [fromAdminId], references: [id])
-  toAdmin        User      @relation("TransferToAdmin", fields: [toAdminId], references: [id])
+  ticket    Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  fromAdmin User   @relation("TransferFromAdmin", fields: [fromAdminId], references: [id])
+  toAdmin   User   @relation("TransferToAdmin", fields: [toAdminId], references: [id])
 
   @@index([ticketId])
   @@index([fromAdminId])

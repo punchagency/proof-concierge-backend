@@ -22,40 +22,40 @@ async function clearAllDataExceptUsers(): Promise<void> {
   console.log('Starting database cleanup...');
   
   try {
-    // Check and delete messages if table exists
-    if (await tableExists('Message')) {
-      console.log('Deleting all messages...');
-      await prisma.message.deleteMany({});
-      console.log('✅ All messages deleted');
+    // Check and delete text messages if table exists
+    if (await tableExists('TextMessage')) {
+      console.log('Deleting all text messages...');
+      await prisma.textMessage.deleteMany({});
+      console.log('✅ All text messages deleted');
     } else {
-      console.log('⚠️ Message table does not exist yet, skipping');
+      console.log('⚠️ TextMessage table does not exist yet, skipping');
     }
     
-    // Check and delete call requests if table exists
-    if (await tableExists('CallRequest')) {
-      console.log('Deleting all call requests...');
-      await prisma.callRequest.deleteMany({});
-      console.log('✅ All call requests deleted');
+    // Check and delete calls if table exists
+    if (await tableExists('Call')) {
+      console.log('Deleting all calls...');
+      await prisma.call.deleteMany({});
+      console.log('✅ All calls deleted');
     } else {
-      console.log('⚠️ CallRequest table does not exist yet, skipping');
+      console.log('⚠️ Call table does not exist yet, skipping');
     }
     
-    // Check and delete call sessions if table exists
-    if (await tableExists('CallSession')) {
-      console.log('Deleting all call sessions...');
-      await prisma.callSession.deleteMany({});
-      console.log('✅ All call sessions deleted');
+    // Check and delete tickets if table exists
+    if (await tableExists('Ticket')) {
+      console.log('Deleting all tickets...');
+      await prisma.ticket.deleteMany({});
+      console.log('✅ All tickets deleted');
     } else {
-      console.log('⚠️ CallSession table does not exist yet, skipping');
+      console.log('⚠️ Ticket table does not exist yet, skipping');
     }
     
-    // Check and delete donor queries if table exists
-    if (await tableExists('DonorQuery')) {
-      console.log('Deleting all donor queries...');
-      await prisma.donorQuery.deleteMany({});
-      console.log('✅ All donor queries deleted');
+    // Check and delete ticket transfers if table exists
+    if (await tableExists('TicketTransfer')) {
+      console.log('Deleting all ticket transfers...');
+      await prisma.ticketTransfer.deleteMany({});
+      console.log('✅ All ticket transfers deleted');
     } else {
-      console.log('⚠️ DonorQuery table does not exist yet, skipping');
+      console.log('⚠️ TicketTransfer table does not exist yet, skipping');
     }
     
     console.log('Database cleanup completed successfully!');

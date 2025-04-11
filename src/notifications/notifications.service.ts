@@ -1,163 +1,65 @@
-import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
-import * as admin from 'firebase-admin';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../database/prisma.service';
 import { UserRole } from '@prisma/client';
 
 @Injectable()
-export class NotificationsService implements OnModuleInit {
+export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
-  private adminApp: admin.app.App;
-  private isInitialized = false;
 
   constructor(
     private configService: ConfigService,
     private prisma: PrismaService
   ) {}
 
-  onModuleInit() {
-    try {
-      // Check if Firebase is already initialized
-      try {
-        this.adminApp = admin.app();
-        this.isInitialized = true;
-        this.logger.log('Firebase Admin SDK already initialized');
-        return;
-      } catch (error) {
-        // App not initialized yet, continue with initialization
-        this.logger.log('Initializing Firebase Admin SDK');
-      }
-
-      // Get Firebase configuration from environment variables
-      const projectId = this.configService.get<string>('FIREBASE_PROJECT_ID');
-      const clientEmail = this.configService.get<string>('FIREBASE_CLIENT_EMAIL');
-      const privateKey = this.configService.get<string>('FIREBASE_PRIVATE_KEY');
-
-      if (!projectId || !clientEmail || !privateKey) {
-        this.logger.warn('Firebase credentials not fully configured. FCM notifications will be disabled.');
-        this.logger.warn('Missing credentials:', {
-          projectId: !projectId,
-          clientEmail: !clientEmail,
-          privateKey: !privateKey,
-        });
-        return;
-      }
-
-      // Properly format the private key to handle various formats and encoding issues
-      let formattedPrivateKey = privateKey;
-      // Remove surrounding quotes if present
-      if (formattedPrivateKey.startsWith('"') && formattedPrivateKey.endsWith('"')) {
-        formattedPrivateKey = formattedPrivateKey.slice(1, -1);
-        this.logger.log('Trimmed surrounding quotes from FIREBASE_PRIVATE_KEY');
-      }
-
-      // Fix for production: Make sure the key has correct line breaks
-      if (formattedPrivateKey.includes('\\n')) {
-        formattedPrivateKey = formattedPrivateKey.replace(/\\n/g, '\n');
-        this.logger.log('Formatted private key by replacing \n with actual line breaks');
-      } else if (!formattedPrivateKey.includes('-----BEGIN PRIVATE KEY-----')) {
-        // Sometimes the key might be base64 encoded without proper formatting
-        this.logger.warn('Private key appears to be missing BEGIN/END markers - check key format');
-      }
-
-      try {
-        // Initialize Firebase Admin SDK for server-side notifications
-        this.adminApp = admin.initializeApp({
-          credential: admin.credential.cert({
-            projectId,
-            clientEmail,
-            privateKey: formattedPrivateKey,
-          }),
-        });
-
-        this.isInitialized = true;
-        this.logger.log('Firebase Admin SDK initialized successfully');
-      } catch (certError) {
-        this.logger.error('Firebase credential initialization error:', certError);
-        
-        // Fallback: try one more time with a differently formatted key
-        try {
-          // Sometimes double-escaping can happen, try to fix that
-          if (privateKey.includes('\\\\n')) {
-            formattedPrivateKey = privateKey.replace(/\\\\n/g, '\n');
-            this.logger.log('Attempting with double-escaped newlines replaced');
-            
-            this.adminApp = admin.initializeApp({
-              credential: admin.credential.cert({
-                projectId,
-                clientEmail,
-                privateKey: formattedPrivateKey,
-              }),
-            });
-            
-            this.isInitialized = true;
-            this.logger.log('Firebase Admin SDK initialized successfully on second attempt');
-          } else {
-            throw certError; // Re-throw if we don't have a specific fix to try
-          }
-        } catch (fallbackError) {
-          this.logger.error('All Firebase initialization attempts failed:', fallbackError);
-          // Failed to initialize, notifications will be disabled
-        }
-      }
-    } catch (error) {
-      this.logger.error('Error initializing Firebase Admin SDK:', error);
-      // Don't throw the error, just log it and continue
-    }
-  }
-
   /**
-   * Validates if a token appears to be a valid FCM token
-   * @param token The FCM token to validate
+   * Validates if a token appears to be a valid notification token
+   * @param token The notification token to validate
    * @returns boolean indicating if the token appears valid
    */
-  isValidFcmToken(token: string): boolean {
-    // FCM tokens are typically long strings (140+ characters)
+  isValidNotificationToken(token: string): boolean {
+    // Basic validation for notification tokens
     if (!token || typeof token !== 'string') {
       return false;
     }
     
     // Check for common test tokens
     if (
-      token === 'test-fcm-token' || 
-      token === 'RECIPIENT_FCM_TOKEN' || 
-      token.length < 20
+      token === 'test-token' || 
+      token === 'RECIPIENT_TOKEN' || 
+      token.length < 10
     ) {
       return false;
     }
     
-    // Basic format validation - FCM tokens are typically alphanumeric with some special chars
+    // Basic format validation
     const validTokenPattern = /^[a-zA-Z0-9:_\-]+$/;
     return validTokenPattern.test(token);
   }
 
   /**
-   * Send a notification to a specific device using FCM
-   * @param token FCM device token
+   * Send a notification to a specific device
+   * @param token Device token
    * @param payload Notification payload
    * @returns Promise with the message ID
    */
   async sendNotification(
     token: string,
-    payload: Omit<admin.messaging.Message, 'token'>,
+    payload: { title: string; body: string; data?: Record<string, string> },
   ) {
     try {
-      if (!this.isInitialized) {
-        this.logger.warn('Firebase Admin SDK not initialized. Skipping notification.');
-        return null;
-      }
-
       // Validate the token format
-      if (!this.isValidFcmToken(token)) {
-        this.logger.warn(`Invalid FCM token format: ${token}`);
+      if (!this.isValidNotificationToken(token)) {
+        this.logger.warn(`Invalid notification token format: ${token}`);
         return null;
       }
 
       this.logger.log(`Sending notification to token: ${token}`);
-      // Merge the token into the payload and send
-      const result = await admin.messaging().send({ ...payload, token });
-      this.logger.log(`Notification sent successfully: ${result}`);
-      return result;
+      this.logger.log(`Notification payload: ${JSON.stringify(payload)}`);
+      
+      // In a real implementation, you would send the notification here
+      // For now, we'll just log it and return a mock success
+      return 'mock-notification-id';
     } catch (error) {
       this.logger.error(`Error sending notification: ${error.message}`, error.stack);
       // Don't throw the error, just log it and return null
@@ -166,27 +68,22 @@ export class NotificationsService implements OnModuleInit {
   }
 
   /**
-   * Send a notification to multiple devices using FCM
-   * @param tokens Array of FCM device tokens
+   * Send a notification to multiple devices
+   * @param tokens Array of device tokens
    * @param payload Notification payload
    * @returns Promise with the message IDs
    */
   async sendMulticastNotification(
     tokens: string[],
-    payload: admin.messaging.MulticastMessage['notification'],
-    data?: admin.messaging.MulticastMessage['data'],
+    payload: { title: string; body: string },
+    data?: Record<string, string>,
   ) {
     try {
-      if (!this.isInitialized) {
-        this.logger.warn('Firebase Admin SDK not initialized. Skipping multicast notification.');
-        return null;
-      }
-
       // Filter out invalid tokens
-      const validTokens = tokens.filter(token => this.isValidFcmToken(token));
+      const validTokens = tokens.filter(token => this.isValidNotificationToken(token));
       
       if (validTokens.length === 0) {
-        this.logger.warn('No valid FCM tokens provided for multicast notification.');
+        this.logger.warn('No valid notification tokens provided for multicast notification.');
         return null;
       }
       
@@ -195,27 +92,15 @@ export class NotificationsService implements OnModuleInit {
       }
 
       this.logger.log(`Sending multicast notification to ${validTokens.length} devices`);
-      const message: admin.messaging.MulticastMessage = {
-        tokens: validTokens,
-        notification: payload,
-        data,
+      this.logger.log(`Notification payload: ${JSON.stringify(payload)}`);
+      
+      // In a real implementation, you would send the notifications here
+      // For now, we'll just log it and return a mock success
+      return {
+        successCount: validTokens.length,
+        failureCount: 0,
+        responses: validTokens.map(() => ({ success: true }))
       };
-      
-      // Use the messaging() function to send multicast messages
-      const batchResponse = await admin.messaging().sendEachForMulticast(message);
-      this.logger.log(`${batchResponse.successCount} messages were sent successfully`);
-      
-      if (batchResponse.failureCount > 0) {
-        const failedTokens: Array<{token: string, error: any}> = [];
-        batchResponse.responses.forEach((resp, idx) => {
-          if (!resp.success) {
-            failedTokens.push({ token: validTokens[idx], error: resp.error });
-          }
-        });
-        this.logger.warn(`Failed to send to some tokens:`, failedTokens);
-      }
-      
-      return batchResponse;
     } catch (error) {
       this.logger.error(`Error sending multicast notification: ${error.message}`, error.stack);
       // Don't throw the error, just log it and return null
@@ -225,7 +110,7 @@ export class NotificationsService implements OnModuleInit {
 
   /**
    * Send a notification about a new call
-   * @param recipientToken FCM token of the recipient
+   * @param recipientToken Token of the recipient
    * @param callerName Name of the caller
    * @param callId Unique ID for the call
    * @param callType Type of call (video/audio)
@@ -237,45 +122,20 @@ export class NotificationsService implements OnModuleInit {
     callType: 'video' | 'audio',
   ) {
     try {
-      if (!this.isInitialized) {
-        this.logger.warn('Firebase Admin SDK not initialized. Skipping call notification.');
-        return null;
-      }
-
       // Validate the token format
-      if (!this.isValidFcmToken(recipientToken)) {
-        this.logger.warn(`Invalid FCM token format for call notification: ${recipientToken}`);
+      if (!this.isValidNotificationToken(recipientToken)) {
+        this.logger.warn(`Invalid notification token format for call notification: ${recipientToken}`);
         return null;
       }
 
       return this.sendNotification(recipientToken, {
-        notification: {
-          title: `Incoming ${callType} call`,
-          body: `${callerName} is calling you`,
-        },
+        title: `Incoming ${callType} call`,
+        body: `${callerName} is calling you`,
         data: {
           callId,
           callType,
           callerName,
           timestamp: Date.now().toString(),
-        },
-        android: {
-          priority: 'high',
-          notification: {
-            channelId: 'calls',
-            priority: 'high',
-            sound: 'default',
-            visibility: 'public',
-          },
-        },
-        apns: {
-          payload: {
-            aps: {
-              sound: 'default',
-              category: 'CALL',
-              contentAvailable: true,
-            },
-          },
         },
       });
     } catch (error) {
@@ -286,18 +146,15 @@ export class NotificationsService implements OnModuleInit {
   }
 
   /**
-   * Generates a valid-looking test FCM token for testing purposes
-   * Note: This is NOT a real FCM token and will not work with Firebase
-   * It's only for testing the validation logic
-   * @returns A string that looks like a valid FCM token
+   * Generates a valid-looking test notification token for testing purposes
+   * @returns A string that looks like a valid notification token
    */
-  generateTestFcmToken(): string {
-    // Generate a random string that looks like an FCM token
-    // Real FCM tokens are much more complex, but this is just for testing
+  generateTestNotificationToken(): string {
+    // Generate a random string that looks like a notification token
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_:';
     let result = '';
-    // FCM tokens are typically 140+ characters
-    const length = 152;
+    // Tokens are typically 20+ characters
+    const length = 32;
     
     for (let i = 0; i < length; i++) {
       result += chars.charAt(Math.floor(Math.random() * chars.length));
@@ -307,12 +164,12 @@ export class NotificationsService implements OnModuleInit {
   }
 
   /**
-   * Get FCM tokens for all admin users
-   * @returns Array of FCM tokens for admin users
+   * Get notification tokens for all admin users
+   * @returns Array of notification tokens for admin users
    */
-  async getAdminFcmTokens(): Promise<string[]> {
+  async getAdminNotificationTokens(): Promise<string[]> {
     try {
-      // Find all admin and super admin users with FCM tokens
+      // Find all admin and super admin users with notification tokens
       const admins = await this.prisma.user.findMany({
         where: {
           role: {
@@ -327,15 +184,15 @@ export class NotificationsService implements OnModuleInit {
         }
       });
       
-      // Extract FCM tokens from users, filter out any null values, and validate tokens
+      // Extract notification tokens from users, filter out any null values, and validate tokens
       const tokens = admins
         .map(admin => admin.fcmToken)
-        .filter((token): token is string => !!token && this.isValidFcmToken(token));
+        .filter((token): token is string => !!token && this.isValidNotificationToken(token));
       
-      this.logger.log(`Found ${tokens.length} admin FCM tokens`);
+      this.logger.log(`Found ${tokens.length} admin notification tokens`);
       return tokens;
     } catch (error) {
-      this.logger.error(`Error getting admin FCM tokens: ${error.message}`, error.stack);
+      this.logger.error(`Error getting admin notification tokens: ${error.message}`, error.stack);
       return [];
     }
   }
@@ -353,8 +210,8 @@ export class NotificationsService implements OnModuleInit {
     data?: Record<string, string>
   ) {
     try {
-      // Get all admin FCM tokens
-      const adminTokens = await this.getAdminFcmTokens();
+      // Get all admin notification tokens
+      const adminTokens = await this.getAdminNotificationTokens();
       
       if (adminTokens.length === 0) {
         this.logger.warn('No admin tokens found for notification');

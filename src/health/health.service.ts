@@ -114,37 +114,16 @@ export class HealthService {
     }
   }
 
-  async checkFirebase(): Promise<any> {
-    try {
-      // Use a more reliable Firebase endpoint
-      const response = await firstValueFrom(
-        this.httpService.get('https://firebase.google.com/', { 
-          timeout: 5000,
-          validateStatus: () => true // Accept any status code
-        })
-      );
-      return {
-        status: response.status >= 200 && response.status < 300 ? 'up' : 'down',
-        statusCode: response.status,
-      };
-    } catch (error) {
-      return {
-        status: 'down',
-        message: error.message,
-      };
-    }
-  }
-
   async checkDonorQueriesHealth() {
     try {
       // Count the number of queries
-      const count = await this.prisma.donorQuery.count();
+      const count = await this.prisma.ticket.count();
       
       // Check if we can get the most recent query, but handle the case where there are no queries
       let recentQueryDate: Date | null = null;
       
       if (count > 0) {
-        const recentQuery = await this.prisma.donorQuery.findFirst({
+        const recentQuery = await this.prisma.ticket.findFirst({
           orderBy: { createdAt: 'desc' },
         });
         

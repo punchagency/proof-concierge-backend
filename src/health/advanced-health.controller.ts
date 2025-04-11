@@ -31,7 +31,6 @@ export class AdvancedHealthController {
       database,
       storage,
       memory,
-      firebase,
       frontend,
       donorQueries,
       emailService,
@@ -39,7 +38,6 @@ export class AdvancedHealthController {
       this.healthService.checkDatabase(),
       this.healthService.checkDiskStorage(),
       this.healthService.checkMemory(),
-      this.healthService.checkFirebase(),
       this.healthService.checkExternalService(this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3000', 2000),
       this.healthService.checkDonorQueriesHealth(),
       this.healthService.checkEmailService(),
@@ -56,7 +54,6 @@ export class AdvancedHealthController {
       storage.status,
       memory.heap.status,
       memory.rss.status,
-      firebase.status,
       frontendResult.status,
       donorQueries.status,
       emailService.status,
@@ -72,7 +69,6 @@ export class AdvancedHealthController {
         storage: { status: storage.status },
         memory_heap: { status: memory.heap.status },
         memory_rss: { status: memory.rss.status },
-        firebase: { status: firebase.status },
         frontend: { status: frontendResult.status },
         donor_queries: { status: donorQueries.status },
         email_service: { status: emailService.status },
@@ -83,7 +79,6 @@ export class AdvancedHealthController {
         storage,
         memory_heap: memory.heap,
         memory_rss: memory.rss,
-        firebase,
         frontend: frontendResult,
         donor_queries: donorQueries,
         email_service: emailService,
@@ -288,12 +283,6 @@ export class AdvancedHealthController {
           </div>
           
           <div class="dashboard-item">
-            <div class="indicator indicator-${firebase.status}"></div>
-            <h3>Firebase</h3>
-            <p>${firebase.status.toUpperCase()}</p>
-          </div>
-          
-          <div class="dashboard-item">
             <div class="indicator indicator-${frontendResult.status}"></div>
             <h3>Frontend</h3>
             <p>${frontendResult.status.toUpperCase()}</p>
@@ -341,11 +330,6 @@ export class AdvancedHealthController {
             <p>${memory.rss.message || 'Memory RSS check passed.'}</p>
             ${memory.rss.used ? `<p>Used: ${Math.round(memory.rss.used / 1024 / 1024)}MB</p>` : ''}
             ${memory.rss.total ? `<p>Total: ${Math.round(memory.rss.total / 1024 / 1024)}MB</p>` : ''}
-          </div>
-          
-          <div class="component">
-            <h3>Firebase ${getStatusBadge(firebase.status)}</h3>
-            <p>${firebase.message || 'Firebase connectivity check passed.'}</p>
           </div>
           
           <div class="component">

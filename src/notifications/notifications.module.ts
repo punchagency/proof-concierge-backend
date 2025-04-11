@@ -2,13 +2,12 @@ import { Module } from '@nestjs/common';
 import { NotificationsService } from './notifications.service';
 import { ConfigModule } from '@nestjs/config';
 import { PrismaModule } from '../database/prisma.module';
-import { NotificationsGateway } from './notifications.gateway';
 import { JwtModule } from '@nestjs/jwt';
 import { EmailService } from './email.service';
 
 @Module({
   imports: [
-    ConfigModule, 
+    ConfigModule,
     PrismaModule,
     JwtModule.register({
       global: true,
@@ -16,7 +15,7 @@ import { EmailService } from './email.service';
       signOptions: { expiresIn: '60d' },
     }),
   ],
-  providers: [NotificationsService, NotificationsGateway, EmailService],
-  exports: [NotificationsService, NotificationsGateway, EmailService],
+  providers: [NotificationsService, EmailService],
+  exports: [NotificationsService, EmailService],
 })
 export class NotificationsModule {}
