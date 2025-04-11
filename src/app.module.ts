@@ -4,8 +4,6 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { NotificationsModule } from './notifications/notifications.module';
-import { CommunicationModule } from './communication/communication.module';
-import { DonorQueriesModule } from './donor-queries/donor-queries.module';
 import { HealthModule } from './health/health.module';
 import { DatabaseModule } from './database/database.module';
 import { AppController } from './app.controller';
@@ -27,8 +25,6 @@ import { TextMessagesModule } from './text-messages/text-messages.module';
     AuthModule,
     UsersModule,
     NotificationsModule,
-    CommunicationModule,
-    DonorQueriesModule,
     HealthModule,
     TicketsModule,
     CallsModule,
