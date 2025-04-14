@@ -10,7 +10,6 @@ This document provides a detailed guide to all the API endpoints in the Proof Co
 - [Authentication & Authorization](#authentication--authorization)
 - [Real-time Notifications System](#real-time-notifications-system)
   - [WebSocket Notifications](#websocket-notifications)
-  - [Firebase Cloud Messaging (FCM)](#firebase-cloud-messaging-fcm)
   - [Integration Points](#integration-points)
   - [Benefits](#benefits)
 - [Public Endpoints](#public-endpoints)
@@ -116,8 +115,8 @@ The system uses Socket.IO (integrated with NestJS's `WebSocketGateway`) to provi
    - The WebSocket server is accessible at the path `/api/v1/socket.io`
    - Authentication is performed using the same JWT tokens used for REST API authentication
    - Unauthenticated clients are immediately disconnected
-   
 2. **Room-based Subscriptions**:
+
    - Clients are automatically joined to rooms based on their identity:
      - Admins join an "admins" room (`socket.join('admins')`)
      - All users join personal rooms (`socket.join('user-{userId}')`)
@@ -127,49 +126,50 @@ The system uses Socket.IO (integrated with NestJS's `WebSocketGateway`) to provi
 3. **Notification Events**:
    The system emits various event types that clients can listen for:
 
-   | Event | Description | Payload Example |
-   |-------|-------------|-----------------|
-   | `queryStatusChanged` | When query status changes | `{ queryId: 123, status: 'RESOLVED', changedBy: 'Admin Name' }` |
-   | `newQuery` | When a new query is created | `{ queryId: 123, donor: 'john.doe@example.com' }` |
-   | `newMessage` | When a new message is added (legacy format) | `{ queryId: 123, messageId: 456, content: '...' }` |
-   | `enhancedMessage` | When a new message is added with sender details | `{ id: 456, content: '...', queryId: 123, senderType: 'DONOR', sender: { donorId: 'donor_001', name: 'John Doe' } }` |
-   | `queryTransferred` | When query is transferred | `{ queryId: 123, fromUserId: 456, toUserId: 789 }` |
-   | `queryAssigned` | When query is assigned | `{ queryId: 123, userId: 456 }` |
-   | `callRequested` | When a call is requested | `{ queryId: 123, requestId: 789 }` |
-   | `callStarted` | When a call is started | `{ queryId: 123, callSession: { id: 456, roomName: 'room-xyz' }, adminId: 789 }` |
-   | `callStatusChanged` | When call status changes | `{ queryId: 123, callId: 456, status: 'STARTED' }` |
+   | Event                | Description                                     | Payload Example                                                                                                      |
+   | -------------------- | ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+   | `queryStatusChanged` | When query status changes                       | `{ queryId: 123, status: 'RESOLVED', changedBy: 'Admin Name' }`                                                      |
+   | `newQuery`           | When a new query is created                     | `{ queryId: 123, donor: 'john.doe@example.com' }`                                                                    |
+   | `newMessage`         | When a new message is added (legacy format)     | `{ queryId: 123, messageId: 456, content: '...' }`                                                                   |
+   | `enhancedMessage`    | When a new message is added with sender details | `{ id: 456, content: '...', queryId: 123, senderType: 'DONOR', sender: { donorId: 'donor_001', name: 'John Doe' } }` |
+   | `queryTransferred`   | When query is transferred                       | `{ queryId: 123, fromUserId: 456, toUserId: 789 }`                                                                   |
+   | `queryAssigned`      | When query is assigned                          | `{ queryId: 123, userId: 456 }`                                                                                      |
+   | `callRequested`      | When a call is requested                        | `{ queryId: 123, requestId: 789 }`                                                                                   |
+   | `callStarted`        | When a call is started                          | `{ queryId: 123, callSession: { id: 456, roomName: 'room-xyz' }, adminId: 789 }`                                     |
+   | `callStatusChanged`  | When call status changes                        | `{ queryId: 123, callId: 456, status: 'STARTED' }`                                                                   |
 
 4. **Client Usage Example**:
+
    ```javascript
    // Connect to notifications namespace with authentication
    const socket = io('https://your-api-url/notifications', {
      path: '/api/v1/socket.io',
      auth: {
-       token: 'your-jwt-token'
-     }
+       token: 'your-jwt-token',
+     },
    });
-   
+
    // Listen for connection events
    socket.on('connect', () => {
      console.log('Connected to notification system');
-     
+
      // Join a specific query room
      socket.emit('joinQueryRoom', { queryId: 123 }, (response) => {
        console.log('Join response:', response);
      });
    });
-   
+
    // Listen for various notification types
    socket.on('newMessage', (data) => {
      console.log('New message received (legacy format):', data);
      // Handle new message notification
    });
-   
+
    socket.on('enhancedMessage', (data) => {
      console.log('Enhanced message received:', data);
      // Handle enhanced message with sender details
      const { senderType, sender } = data;
-     
+
      // Display different UI elements based on sender type
      if (senderType === 'ADMIN') {
        // Show admin avatar and name
@@ -182,12 +182,12 @@ The system uses Socket.IO (integrated with NestJS's `WebSocketGateway`) to provi
        showSystemMessage(data.content);
      }
    });
-   
+
    socket.on('queryStatusChange', (data) => {
      console.log('Query status changed:', data);
      // Update UI based on new status
    });
-   
+
    socket.on('callStarted', (data) => {
      console.log('Call started:', data);
      // Handle call started notification
@@ -195,84 +195,12 @@ The system uses Socket.IO (integrated with NestJS's `WebSocketGateway`) to provi
      const { queryId, callSession, adminId } = data;
      showJoinCallDialog(callSession.roomName);
    });
-   
+
    // Clean up when done
    socket.on('disconnect', () => {
      console.log('Disconnected from notification system');
    });
    ```
-
-### Firebase Cloud Messaging (FCM)
-
-For mobile clients, the system implements push notifications using Firebase Cloud Messaging:
-
-1. **FCM Token Management**:
-   - Mobile clients register their FCM tokens using the `PUT /users/me/fcm-token` endpoint
-   - FCM tokens are stored in the user record and query records
-
-2. **Push Notification Types**:
-   The system sends various types of push notifications:
-   - Query status changes
-   - New messages
-   - Call requests and status updates
-   - Assignment and transfer notifications
-
-3. **Implementation Details**:
-   - Notifications include both visual notification content and data payload
-   - Android notifications use high priority and specific channels
-   - The payload includes all information needed to navigate to the relevant screen
-
-4. **Example FCM Payload**:
-   ```json
-   {
-     "notification": {
-       "title": "New Message",
-       "body": "You've received a new message for query #123"
-     },
-     "data": {
-       "type": "new_message",
-       "queryId": "123",
-       "messageId": "456",
-       "timestamp": "2023-10-10T12:00:00.000Z"
-     },
-     "android": {
-       "priority": "high",
-       "notification": {
-         "channelId": "messages"
-       }
-     }
-   }
-   ```
-
-### Integration Points
-
-The notification system is integrated throughout the application:
-
-1. **Donor Queries**:
-   - Status changes (resolve, transfer, accept)
-   - New query creation
-   - Assignment changes
-
-2. **Messaging**:
-   - New messages (chat messages, system messages)
-   - Message status updates
-
-3. **Calls/Communication**:
-   - Call requests
-   - Call status changes (started, ended)
-   - Call acceptance/rejection
-
-### Benefits
-
-This real-time notification system provides several key benefits:
-
-1. **Immediate Updates**: Users see changes instantly without refreshing or polling
-2. **Reduced Server Load**: Eliminates the need for frequent polling
-3. **Mobile Awareness**: Push notifications keep mobile users informed even when the app is in the background
-4. **Targeted Delivery**: Room-based approach ensures users only receive relevant notifications
-5. **Cross-Platform**: Works on web, mobile, and any platform supporting WebSockets or FCM
-
----
 
 ## Public Endpoints
 
@@ -283,9 +211,11 @@ This real-time notification system provides several key benefits:
 **Purpose:** Authenticate a user and obtain a JWT token for accessing protected endpoints.
 
 **Request:**
+
 - **Method:** POST
 - **URL:** `/auth/login`
 - **Body:**
+
 ```json
 {
   "username": "admin.user",
@@ -294,6 +224,7 @@ This real-time notification system provides several key benefits:
 ```
 
 **cURL Example:**
+
 ```bash
 curl --location --request POST 'http://localhost:3000/auth/login' \
 --header 'Content-Type: application/json' \
@@ -304,6 +235,7 @@ curl --location --request POST 'http://localhost:3000/auth/login' \
 ```
 
 **Response:**
+
 ```json
 {
   "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
@@ -320,6 +252,7 @@ curl --location --request POST 'http://localhost:3000/auth/login' \
 ```
 
 **Error Response:**
+
 ```json
 {
   "statusCode": 401,
@@ -328,6 +261,7 @@ curl --location --request POST 'http://localhost:3000/auth/login' \
 ```
 
 **Notes:**
+
 - The returned JWT token should be included in the `Authorization` header for all protected endpoints.
 - The token expires after a certain period (typically 24 hours).
 - The user object contains basic information about the authenticated user.
@@ -339,15 +273,18 @@ curl --location --request POST 'http://localhost:3000/auth/login' \
 **Purpose:** Check the overall health of the system, including database, storage, and memory.
 
 **Request:**
+
 - **Method:** GET
 - **URL:** `/health`
 
 **cURL Example:**
+
 ```bash
 curl --location --request GET 'http://localhost:3000/health'
 ```
 
 **Response:**
+
 ```json
 {
   "status": "ok",
@@ -394,6 +331,7 @@ curl --location --request GET 'http://localhost:3000/health'
 ```
 
 **Notes:**
+
 - The `status` field can be "ok" or "error" depending on the health of the system.
 - The `info` section provides a summary of each component's status.
 - The `details` section provides more detailed information about each component.
@@ -403,15 +341,18 @@ curl --location --request GET 'http://localhost:3000/health'
 **Purpose:** Simple ping endpoint to check if the API is responsive.
 
 **Request:**
+
 - **Method:** GET
 - **URL:** `/health/ping`
 
 **cURL Example:**
+
 ```bash
 curl --location --request GET 'http://localhost:3000/health/ping'
 ```
 
 **Response:**
+
 ```json
 {
   "status": "ok",
@@ -424,15 +365,18 @@ curl --location --request GET 'http://localhost:3000/health/ping'
 **Purpose:** Get detailed health information about the system, including environment variables and configuration.
 
 **Request:**
+
 - **Method:** GET
 - **URL:** `/health/advanced`
 
 **cURL Example:**
+
 ```bash
 curl --location --request GET 'http://localhost:3000/health/advanced'
 ```
 
 **Response:**
+
 ```json
 {
   "status": "ok",
@@ -460,6 +404,7 @@ curl --location --request GET 'http://localhost:3000/health/advanced'
 ```
 
 **Notes:**
+
 - This endpoint provides more detailed information than the basic health check.
 - It includes information about the environment, version, and uptime.
 - It also provides detailed information about each component of the system.
@@ -469,15 +414,18 @@ curl --location --request GET 'http://localhost:3000/health/advanced'
 **Purpose:** Get detailed health information about the system, including environment variables and configuration.
 
 **Request:**
+
 - **Method:** GET
 - **URL:** `/health/advanced/detailed`
 
 **cURL Example:**
+
 ```bash
 curl --location --request GET 'http://localhost:3000/health/advanced/detailed'
 ```
 
 **Response:**
+
 ```json
 {
   "status": "ok",
@@ -513,6 +461,7 @@ curl --location --request GET 'http://localhost:3000/health/advanced/detailed'
 ```
 
 **Notes:**
+
 - This endpoint provides extremely detailed health information about the system.
 - It includes memory usage, process information, database details, and configuration.
 - This is typically used for debugging and monitoring purposes.
@@ -529,6 +478,7 @@ curl --location --request GET 'http://localhost:3000/health/advanced/detailed'
 - **Method:** POST
 - **URL:** `/donor-queries`
 - **Body:**
+
 ```json
 {
   "donor": "john.doe@example.com",
@@ -815,10 +765,12 @@ curl --location --request GET 'http://localhost:3000/donor-queries/general?test=
 **Purpose:** Create a new donor query and immediately start a direct call, returning both the query details and call joining information.
 
 **Request:**
+
 - **Method:** POST
 - **URL:** `/donor-queries/start-call`
 - **Auth Required:** No (Public endpoint)
 - **Body:**
+
 ```json
 {
   "donor": "john.doe@example.com",
@@ -832,6 +784,7 @@ curl --location --request GET 'http://localhost:3000/donor-queries/general?test=
 ```
 
 **cURL Example:**
+
 ```bash
 curl --location --request POST 'http://localhost:3000/donor-queries/start-call' \
 --header 'Content-Type: application/json' \
@@ -847,6 +800,7 @@ curl --location --request POST 'http://localhost:3000/donor-queries/start-call' 
 ```
 
 **Response:**
+
 ```json
 {
   "status": 201,
@@ -889,6 +843,7 @@ curl --location --request POST 'http://localhost:3000/donor-queries/start-call' 
 ```
 
 **Notes:**
+
 - This endpoint creates a new query and immediately starts a call in one step
 - The `callType` parameter allows specifying whether to start a video call or an audio-only call
 - It returns both the query details and all the information needed to join the call
@@ -901,36 +856,39 @@ curl --location --request POST 'http://localhost:3000/donor-queries/start-call' 
 **Purpose:** Retrieve donor queries that are in the "TRANSFERRED" status.
 
 **Request:**
+
 - **Method:** GET
 - **URL:** `/donor-queries/transferred`
 
 **cURL Example:**
+
 ```bash
 curl --location --request GET 'http://localhost:3000/donor-queries/transferred' \
 --header 'Authorization: Bearer YOUR_TOKEN'
 ```
 
 **Response:**
+
 ```json
 [
-    {
-        "id": 123,
-        "donor": "john.doe@example.com",
-        "donorId": "donor_001",
-        "test": "unit-test",
-        "stage": "initial",
-        "device": "web",
-        "status": "TRANSFERRED",
-        "messages": [
-            // Array of chat messages
-        ],
-        "callRequests": [
-            // Array of call request objects
-        ],
-        "createdAt": "2023-10-10T12:00:00.000Z",
-        "updatedAt": "2023-10-10T12:00:00.000Z"
-    }
-    // ... Additional queries if applicable
+  {
+    "id": 123,
+    "donor": "john.doe@example.com",
+    "donorId": "donor_001",
+    "test": "unit-test",
+    "stage": "initial",
+    "device": "web",
+    "status": "TRANSFERRED",
+    "messages": [
+      // Array of chat messages
+    ],
+    "callRequests": [
+      // Array of call request objects
+    ],
+    "createdAt": "2023-10-10T12:00:00.000Z",
+    "updatedAt": "2023-10-10T12:00:00.000Z"
+  }
+  // ... Additional queries if applicable
 ]
 ```
 
@@ -939,38 +897,41 @@ curl --location --request GET 'http://localhost:3000/donor-queries/transferred' 
 **Purpose:** Retrieve donor queries based on multiple statuses.
 
 **Request:**
+
 - **Method:** GET
 - **URL:** `/donor-queries/filtered/statuses`
 - **Query Parameters:**
   - `statuses`: Comma-separated list of statuses (e.g., "IN_PROGRESS,RESOLVED")
 
 **cURL Example:**
+
 ```bash
 curl --location --request GET 'http://localhost:3000/donor-queries/filtered/statuses?statuses=IN_PROGRESS,RESOLVED' \
 --header 'Authorization: Bearer YOUR_TOKEN'
 ```
 
 **Response:**
+
 ```json
 [
-    {
-        "id": 123,
-        "donor": "john.doe@example.com",
-        "donorId": "donor_001",
-        "test": "unit-test",
-        "stage": "initial",
-        "device": "web",
-        "status": "IN_PROGRESS",
-        "messages": [
-            // Array of chat messages
-        ],
-        "callRequests": [
-            // Array of call request objects
-        ],
-        "createdAt": "2023-10-10T12:00:00.000Z",
-        "updatedAt": "2023-10-10T12:00:00.000Z"
-    }
-    // ... Additional queries if applicable
+  {
+    "id": 123,
+    "donor": "john.doe@example.com",
+    "donorId": "donor_001",
+    "test": "unit-test",
+    "stage": "initial",
+    "device": "web",
+    "status": "IN_PROGRESS",
+    "messages": [
+      // Array of chat messages
+    ],
+    "callRequests": [
+      // Array of call request objects
+    ],
+    "createdAt": "2023-10-10T12:00:00.000Z",
+    "updatedAt": "2023-10-10T12:00:00.000Z"
+  }
+  // ... Additional queries if applicable
 ]
 ```
 
@@ -979,22 +940,25 @@ curl --location --request GET 'http://localhost:3000/donor-queries/filtered/stat
 **Purpose:** Update a specific donor query.
 
 **Request:**
+
 - **Method:** PATCH
 - **URL:** `/donor-queries/{id}`
 - **Headers:** Requires JWT Authentication and Admin Role
 - **Body:**
+
 ```json
 {
-    "donor": "updated_john.doe@example.com",
-    "donorId": "updated_donor_001",
-    "test": "updated_unit-test",
-    "stage": "updated_initial",
-    "device": "updated_web",
-    "status": "updated_IN_PROGRESS"
+  "donor": "updated_john.doe@example.com",
+  "donorId": "updated_donor_001",
+  "test": "updated_unit-test",
+  "stage": "updated_initial",
+  "device": "updated_web",
+  "status": "updated_IN_PROGRESS"
 }
 ```
 
 **cURL Example:**
+
 ```bash
 curl --location --request PATCH 'http://localhost:3000/donor-queries/123' \
 --header 'Authorization: Bearer YOUR_TOKEN' \
@@ -1010,17 +974,18 @@ curl --location --request PATCH 'http://localhost:3000/donor-queries/123' \
 ```
 
 **Response:**
+
 ```json
 {
-    "id": 123,
-    "donor": "updated_john.doe@example.com",
-    "donorId": "updated_donor_001",
-    "test": "updated_unit-test",
-    "stage": "updated_initial",
-    "device": "updated_web",
-    "status": "updated_IN_PROGRESS",
-    "createdAt": "2023-10-10T12:00:00.000Z",
-    "updatedAt": "2023-10-10T12:00:00.000Z"
+  "id": 123,
+  "donor": "updated_john.doe@example.com",
+  "donorId": "updated_donor_001",
+  "test": "updated_unit-test",
+  "stage": "updated_initial",
+  "device": "updated_web",
+  "status": "updated_IN_PROGRESS",
+  "createdAt": "2023-10-10T12:00:00.000Z",
+  "updatedAt": "2023-10-10T12:00:00.000Z"
 }
 ```
 
@@ -1029,17 +994,20 @@ curl --location --request PATCH 'http://localhost:3000/donor-queries/123' \
 **Purpose:** Add a pending reply to a specific donor query. This endpoint is restricted to the admin who is assigned to the query.
 
 **Request:**
+
 - **Method:** POST
 - **URL:** `/donor-queries/{id}/pending-reply`
 - **Headers:** Requires JWT Authentication and Admin Role
 - **Body:**
+
 ```json
 {
-    "reply": "Pending reply text"
+  "reply": "Pending reply text"
 }
 ```
 
 **cURL Example:**
+
 ```bash
 curl --location --request POST 'http://localhost:3000/donor-queries/123/pending-reply' \
 --header 'Authorization: Bearer YOUR_TOKEN' \
@@ -1050,17 +1018,18 @@ curl --location --request POST 'http://localhost:3000/donor-queries/123/pending-
 ```
 
 **Response:**
+
 ```json
 {
-    "id": 123,
-    "donor": "john.doe@example.com",
-    "donorId": "donor_001",
-    "test": "unit-test",
-    "stage": "initial",
-    "device": "web",
-    "status": "PENDING_REPLY",
-    "createdAt": "2023-10-10T12:00:00.000Z",
-    "updatedAt": "2023-10-10T12:00:00.000Z"
+  "id": 123,
+  "donor": "john.doe@example.com",
+  "donorId": "donor_001",
+  "test": "unit-test",
+  "stage": "initial",
+  "device": "web",
+  "status": "PENDING_REPLY",
+  "createdAt": "2023-10-10T12:00:00.000Z",
+  "updatedAt": "2023-10-10T12:00:00.000Z"
 }
 ```
 
@@ -1069,17 +1038,20 @@ curl --location --request POST 'http://localhost:3000/donor-queries/123/pending-
 **Purpose:** Add a new message to a specific donor query. This endpoint is restricted to the admin who is assigned to the query.
 
 **Request:**
+
 - **Method:** POST
 - **URL:** `/donor-queries/{id}/in-progress`
 - **Headers:** Requires JWT Authentication and Admin Role
 - **Body:**
+
 ```json
 {
-    "message": "New message text"
+  "message": "New message text"
 }
 ```
 
 **cURL Example:**
+
 ```bash
 curl --location --request POST 'http://localhost:3000/donor-queries/123/in-progress' \
 --header 'Authorization: Bearer YOUR_TOKEN' \
@@ -1090,17 +1062,18 @@ curl --location --request POST 'http://localhost:3000/donor-queries/123/in-progr
 ```
 
 **Response:**
+
 ```json
 {
-    "id": 123,
-    "donor": "john.doe@example.com",
-    "donorId": "donor_001",
-    "test": "unit-test",
-    "stage": "initial",
-    "device": "web",
-    "status": "IN_PROGRESS",
-    "createdAt": "2023-10-10T12:00:00.000Z",
-    "updatedAt": "2023-10-10T12:00:00.000Z"
+  "id": 123,
+  "donor": "john.doe@example.com",
+  "donorId": "donor_001",
+  "test": "unit-test",
+  "stage": "initial",
+  "device": "web",
+  "status": "IN_PROGRESS",
+  "createdAt": "2023-10-10T12:00:00.000Z",
+  "updatedAt": "2023-10-10T12:00:00.000Z"
 }
 ```
 
@@ -1109,34 +1082,37 @@ curl --location --request POST 'http://localhost:3000/donor-queries/123/in-progr
 **Purpose:** Resolve a specific donor query.
 
 **Request:**
+
 - **Method:** PATCH
 - **URL:** `/donor-queries/{id}/resolve`
 - **Headers:** Requires JWT Authentication and Admin Role
 
 **cURL Example:**
+
 ```bash
 curl --location --request PATCH 'http://localhost:3000/donor-queries/123/resolve' \
 --header 'Authorization: Bearer YOUR_TOKEN'
 ```
 
 **Response:**
+
 ```json
 {
-    "id": 123,
-    "donor": "john.doe@example.com",
-    "donorId": "donor_001",
-    "test": "unit-test",
-    "stage": "initial",
-    "device": "web",
-    "status": "RESOLVED",
-    "messages": [
-        // Array of chat messages
-    ],
-    "callRequests": [
-        // Array of call request objects
-    ],
-    "createdAt": "2023-10-10T12:00:00.000Z",
-    "updatedAt": "2023-10-10T12:00:00.000Z"
+  "id": 123,
+  "donor": "john.doe@example.com",
+  "donorId": "donor_001",
+  "test": "unit-test",
+  "stage": "initial",
+  "device": "web",
+  "status": "RESOLVED",
+  "messages": [
+    // Array of chat messages
+  ],
+  "callRequests": [
+    // Array of call request objects
+  ],
+  "createdAt": "2023-10-10T12:00:00.000Z",
+  "updatedAt": "2023-10-10T12:00:00.000Z"
 }
 ```
 
@@ -1145,17 +1121,20 @@ curl --location --request PATCH 'http://localhost:3000/donor-queries/123/resolve
 **Purpose:** Transfer a specific donor query to another admin.
 
 **Request:**
+
 - **Method:** PATCH
 - **URL:** `/donor-queries/{id}/transfer`
 - **Headers:** Requires JWT Authentication and Admin Role
 - **Body:**
+
 ```json
 {
-    "adminId": 456
+  "adminId": 456
 }
 ```
 
 **cURL Example:**
+
 ```bash
 curl --location --request PATCH 'http://localhost:3000/donor-queries/123/transfer' \
 --header 'Authorization: Bearer YOUR_TOKEN' \
@@ -1166,23 +1145,24 @@ curl --location --request PATCH 'http://localhost:3000/donor-queries/123/transfe
 ```
 
 **Response:**
+
 ```json
 {
-    "id": 123,
-    "donor": "john.doe@example.com",
-    "donorId": "donor_001",
-    "test": "unit-test",
-    "stage": "initial",
-    "device": "web",
-    "status": "TRANSFERRED",
-    "messages": [
-        // Array of chat messages
-    ],
-    "callRequests": [
-        // Array of call request objects
-    ],
-    "createdAt": "2023-10-10T12:00:00.000Z",
-    "updatedAt": "2023-10-10T12:00:00.000Z"
+  "id": 123,
+  "donor": "john.doe@example.com",
+  "donorId": "donor_001",
+  "test": "unit-test",
+  "stage": "initial",
+  "device": "web",
+  "status": "TRANSFERRED",
+  "messages": [
+    // Array of chat messages
+  ],
+  "callRequests": [
+    // Array of call request objects
+  ],
+  "createdAt": "2023-10-10T12:00:00.000Z",
+  "updatedAt": "2023-10-10T12:00:00.000Z"
 }
 ```
 
@@ -1191,28 +1171,31 @@ curl --location --request PATCH 'http://localhost:3000/donor-queries/123/transfe
 **Purpose:** Send a reminder for a specific donor query.
 
 **Request:**
+
 - **Method:** POST
 - **URL:** `/donor-queries/{id}/send-reminder`
 - **Headers:** Requires JWT Authentication and Admin Role
 
 **cURL Example:**
+
 ```bash
 curl --location --request POST 'http://localhost:3000/donor-queries/123/send-reminder' \
 --header 'Authorization: Bearer YOUR_TOKEN'
 ```
 
 **Response:**
+
 ```json
 {
-    "id": 123,
-    "donor": "john.doe@example.com",
-    "donorId": "donor_001",
-    "test": "unit-test",
-    "stage": "initial",
-    "device": "web",
-    "status": "IN_PROGRESS",
-    "createdAt": "2023-10-10T12:00:00.000Z",
-    "updatedAt": "2023-10-10T12:00:00.000Z"
+  "id": 123,
+  "donor": "john.doe@example.com",
+  "donorId": "donor_001",
+  "test": "unit-test",
+  "stage": "initial",
+  "device": "web",
+  "status": "IN_PROGRESS",
+  "createdAt": "2023-10-10T12:00:00.000Z",
+  "updatedAt": "2023-10-10T12:00:00.000Z"
 }
 ```
 
@@ -1221,21 +1204,24 @@ curl --location --request POST 'http://localhost:3000/donor-queries/123/send-rem
 **Purpose:** Delete a specific donor query.
 
 **Request:**
+
 - **Method:** DELETE
 - **URL:** `/donor-queries/{id}`
 - **Headers:** Requires JWT Authentication and Admin Role
 
 **cURL Example:**
+
 ```bash
 curl --location --request DELETE 'http://localhost:3000/donor-queries/123' \
 --header 'Authorization: Bearer YOUR_TOKEN'
 ```
 
 **Response:**
+
 ```json
 {
-    "status": 200,
-    "message": "Donor query with ID 123 deleted successfully"
+  "status": 200,
+  "message": "Donor query with ID 123 deleted successfully"
 }
 ```
 
@@ -1244,34 +1230,37 @@ curl --location --request DELETE 'http://localhost:3000/donor-queries/123' \
 **Purpose:** Accept a specific donor query.
 
 **Request:**
+
 - **Method:** PATCH
 - **URL:** `/donor-queries/{id}/accept`
 - **Headers:** Requires JWT Authentication and Admin Role
 
 **cURL Example:**
+
 ```bash
 curl --location --request PATCH 'http://localhost:3000/donor-queries/123/accept' \
 --header 'Authorization: Bearer YOUR_TOKEN'
 ```
 
 **Response:**
+
 ```json
 {
-    "id": 123,
-    "donor": "john.doe@example.com",
-    "donorId": "donor_001",
-    "test": "unit-test",
-    "stage": "initial",
-    "device": "web",
-    "status": "ACCEPTED",
-    "messages": [
-        // Array of chat messages
-    ],
-    "callRequests": [
-        // Array of call request objects
-    ],
-    "createdAt": "2023-10-10T12:00:00.000Z",
-    "updatedAt": "2023-10-10T12:00:00.000Z"
+  "id": 123,
+  "donor": "john.doe@example.com",
+  "donorId": "donor_001",
+  "test": "unit-test",
+  "stage": "initial",
+  "device": "web",
+  "status": "ACCEPTED",
+  "messages": [
+    // Array of chat messages
+  ],
+  "callRequests": [
+    // Array of call request objects
+  ],
+  "createdAt": "2023-10-10T12:00:00.000Z",
+  "updatedAt": "2023-10-10T12:00:00.000Z"
 }
 ```
 
@@ -1286,9 +1275,11 @@ The Proof Concierge Backend implements an enhanced message handling system that 
 **Purpose:** Create a message from a donor with explicit donor information.
 
 **Request:**
+
 - **Method:** POST
 - **URL:** `/messages/donor/{queryId}`
 - **Body:**
+
 ```json
 {
   "content": "This is a message from a donor",
@@ -1298,6 +1289,7 @@ The Proof Concierge Backend implements an enhanced message handling system that 
 ```
 
 **cURL Example:**
+
 ```bash
 curl --location --request POST 'http://localhost:3000/messages/donor/123' \
 --header 'Content-Type: application/json' \
@@ -1309,6 +1301,7 @@ curl --location --request POST 'http://localhost:3000/messages/donor/123' \
 ```
 
 **Response:**
+
 ```json
 {
   "status": 201,
@@ -1331,6 +1324,7 @@ curl --location --request POST 'http://localhost:3000/messages/donor/123' \
 The Proof Concierge Backend provides a comprehensive API for handling call sessions between admins and donors. This includes starting and ending calls, managing call requests, and handling direct calls initiated by donors.
 
 #### Key Features:
+
 - Support for both video and audio calls
 - Call request system with acceptance/rejection
 - Direct call initiation by donors
@@ -1339,7 +1333,9 @@ The Proof Concierge Backend provides a comprehensive API for handling call sessi
 - Automatic room cleanup for completed/expired calls
 
 #### Call Types
+
 The system supports two types of calls:
+
 - **Video Calls** (`callType: "video"`): Default option with both audio and video capabilities
 - **Audio Calls** (`callType: "audio"`): Audio-only calls for situations with limited bandwidth or where video is not needed
 
@@ -1348,10 +1344,12 @@ The system supports two types of calls:
 **Purpose:** Start a call session between an admin and a donor for a specific query. This endpoint is restricted to users with ADMIN or SUPER_ADMIN roles.
 
 **Request:**
+
 - **Method:** POST
 - **URL:** `/communication/call/{queryId}`
 - **Headers:** Requires JWT Authentication and Admin Role
 - **Body:**
+
 ```json
 {
   "callType": "video" // Optional, can be "video" or "audio", defaults to "video" if not specified
@@ -1359,6 +1357,7 @@ The system supports two types of calls:
 ```
 
 **Success Response:**
+
 ```json
 {
   "success": true,
@@ -1384,6 +1383,7 @@ The system supports two types of calls:
 ```
 
 **Usage Example:**
+
 ```bash
 curl --location --request POST 'http://localhost:3000/communication/call/123' \
 --header 'Authorization: Bearer YOUR_TOKEN' \
@@ -1394,6 +1394,7 @@ curl --location --request POST 'http://localhost:3000/communication/call/123' \
 ```
 
 **Notes:**
+
 - This endpoint creates a new call session with Daily.co and generates tokens for both the admin and the donor.
 - The `callType` parameter allows specifying whether to start a video call or an audio-only call.
 - A message is created to record the call activity in the chat history.
@@ -1405,10 +1406,12 @@ curl --location --request POST 'http://localhost:3000/communication/call/123' \
 **Purpose:** Create a call request from a donor, which admins can then accept or reject. This endpoint is public and allows donors to request calls.
 
 **Request:**
+
 - **Method:** POST
 - **URL:** `/communication/call/{queryId}/request`
 - **Auth Required:** No (Public endpoint)
 - **Body:**
+
 ```json
 {
   "message": "I would like to discuss my test results" // Optional message from the donor
@@ -1416,6 +1419,7 @@ curl --location --request POST 'http://localhost:3000/communication/call/123' \
 ```
 
 **Success Response:**
+
 ```json
 {
   "success": true,
@@ -1443,6 +1447,7 @@ curl --location --request POST 'http://localhost:3000/communication/call/123' \
 ```
 
 **Notes:**
+
 - This endpoint creates a call request record that admins can see and respond to.
 - A system message is created in the chat to record the request.
 - Notifications are sent to the assigned admin if applicable.
@@ -1452,10 +1457,12 @@ curl --location --request POST 'http://localhost:3000/communication/call/123' \
 **Purpose:** Accept a call request and start a call session. This endpoint is restricted to users with ADMIN or SUPER_ADMIN roles.
 
 **Request:**
+
 - **Method:** POST
 - **URL:** `/communication/call/{queryId}/accept-request`
 - **Headers:** Requires JWT Authentication and Admin Role
 - **Body:**
+
 ```json
 {
   "callType": "video" // Optional, can be "video" or "audio", defaults to "video" if not specified
@@ -1463,6 +1470,7 @@ curl --location --request POST 'http://localhost:3000/communication/call/123' \
 ```
 
 **Success Response:**
+
 ```json
 {
   "success": true,
@@ -1498,11 +1506,13 @@ curl --location --request POST 'http://localhost:3000/communication/call/123' \
 ```
 
 **Error Responses:**
+
 - **404 Not Found** - Call request not found
 - **400 Bad Request** - Call request already accepted or rejected
 - **500 Internal Server Error** - Failed to accept call request
 
 **Usage Example:**
+
 ```bash
 curl --location --request POST 'http://localhost:3000/communication/call/123/accept-request' \
 --header 'Authorization: Bearer YOUR_TOKEN' \
@@ -1513,6 +1523,7 @@ curl --location --request POST 'http://localhost:3000/communication/call/123/acc
 ```
 
 **Notes:**
+
 - This endpoint accepts the most recent call request for the specified query and starts a call session.
 - The `callType` parameter allows specifying whether to start a video call or an audio-only call.
 - It sends a WebSocket notification to the donor that their call request has been accepted.
@@ -1523,10 +1534,12 @@ curl --location --request POST 'http://localhost:3000/communication/call/123/acc
 **Purpose:** Start a direct call for a specific donor query without requiring an admin to accept a request first. This endpoint is public and allows donors to initiate calls directly.
 
 **Request:**
+
 - **Method:** POST
 - **URL:** `/communication/call/{queryId}/direct-call`
 - **Auth Required:** No (Public endpoint)
 - **Body:**
+
 ```json
 {
   "callType": "video" // Optional, can be "video" or "audio", defaults to "video" if not specified
@@ -1534,6 +1547,7 @@ curl --location --request POST 'http://localhost:3000/communication/call/123/acc
 ```
 
 **Success Response:**
+
 ```json
 {
   "success": true,
@@ -1566,11 +1580,13 @@ curl --location --request POST 'http://localhost:3000/communication/call/123/acc
 ```
 
 **Error Responses:**
+
 - **404 Not Found** - Query not found
 - **400 Bad Request** - No admin assigned to the query
 - **500 Internal Server Error** - Failed to start call
 
 **Usage Example:**
+
 ```bash
 curl --location --request POST 'http://localhost:3000/communication/call/123/direct-call' \
 --header 'Content-Type: application/json' \
@@ -1580,6 +1596,7 @@ curl --location --request POST 'http://localhost:3000/communication/call/123/dir
 ```
 
 **Notes:**
+
 - This endpoint creates a new call session and generates tokens for both the admin and the donor.
 - The `callType` parameter allows specifying whether to start a video call or an audio-only call.
 - If a call is already active for the query, it returns the existing call details instead of creating a new one.
@@ -1591,11 +1608,13 @@ curl --location --request POST 'http://localhost:3000/communication/call/123/dir
 **Purpose:** Get details of an active call for a specific donor query. This endpoint allows donors to check if there's an ongoing call they can join.
 
 **Request:**
+
 - **Method:** GET
 - **URL:** `/communication/call/{queryId}/active-call`
 - **Auth Required:** No (Public endpoint)
 
 **Success Response:**
+
 ```json
 {
   "success": true,
@@ -1605,7 +1624,7 @@ curl --location --request POST 'http://localhost:3000/communication/call/123/dir
       "id": 123,
       "queryId": 456,
       "adminId": 789,
-      "status": "CREATED", 
+      "status": "CREATED",
       "roomName": "room-abc-xyz",
       "userToken": "user_token_for_authentication",
       "adminToken": "admin_token_for_authentication",
@@ -1620,6 +1639,7 @@ curl --location --request POST 'http://localhost:3000/communication/call/123/dir
 ```
 
 **Response (No Active Call):**
+
 ```json
 {
   "success": false,
@@ -1629,14 +1649,17 @@ curl --location --request POST 'http://localhost:3000/communication/call/123/dir
 ```
 
 **Error Responses:**
+
 - **500 Internal Server Error** - Failed to get active call
 
 **Usage Example:**
+
 ```bash
 curl --location --request GET 'http://localhost:3000/communication/call/123/active-call'
 ```
 
 **Notes:**
+
 - This endpoint returns details of any active call (status "CREATED" or "STARTED") for the specified query.
 - If multiple active calls exist (which should not happen), it returns the most recent one.
 - The response includes the room URL, user token, and call type needed to join the call.
@@ -1660,10 +1683,12 @@ Messages can come from three different sources, defined by the `SenderType` enum
 **Purpose:** Create a message from an admin for a specific donor query. This endpoint is restricted to users with ADMIN or SUPER_ADMIN roles.
 
 **Request:**
+
 - **Method:** POST
 - **URL:** `/messages/admin/{queryId}`
 - **Headers:** Requires JWT Authentication and Admin Role
 - **Body:**
+
 ```json
 {
   "content": "This is a response from an admin",
@@ -1672,6 +1697,7 @@ Messages can come from three different sources, defined by the `SenderType` enum
 ```
 
 **cURL Example:**
+
 ```bash
 curl --location --request POST 'http://localhost:3000/messages/admin/123' \
 --header 'Authorization: Bearer YOUR_TOKEN' \
@@ -1683,6 +1709,7 @@ curl --location --request POST 'http://localhost:3000/messages/admin/123' \
 ```
 
 **Response:**
+
 ```json
 {
   "status": 201,
@@ -1705,6 +1732,7 @@ curl --location --request POST 'http://localhost:3000/messages/admin/123' \
 **Purpose:** Retrieve all messages for a specific donor query. This endpoint is restricted to the admin who is assigned to the query.
 
 **Request:**
+
 - **Method:** GET
 - **URL:** `/messages/admin/{queryId}`
 - **Headers:** Requires JWT Authentication and Admin Role
@@ -1713,12 +1741,14 @@ curl --location --request POST 'http://localhost:3000/messages/admin/123' \
   - `offset` (optional): Pagination offset
 
 **cURL Example:**
+
 ```bash
 curl --location --request GET 'http://localhost:3000/messages/admin/123?limit=10&offset=0' \
 --header 'Authorization: Bearer YOUR_TOKEN'
 ```
 
 **Response:**
+
 ```json
 {
   "status": 200,
@@ -1769,10 +1799,12 @@ curl --location --request GET 'http://localhost:3000/messages/admin/123?limit=10
 **Purpose:** Create a system message not associated with any specific user. This endpoint is restricted to users with ADMIN or SUPER_ADMIN roles.
 
 **Request:**
+
 - **Method:** POST
 - **URL:** `/messages/system/{queryId}`
 - **Headers:** Requires JWT Authentication and Admin Role
 - **Body:**
+
 ```json
 {
   "content": "This is a system notification message",
@@ -1781,6 +1813,7 @@ curl --location --request GET 'http://localhost:3000/messages/admin/123?limit=10
 ```
 
 **cURL Example:**
+
 ```bash
 curl --location --request POST 'http://localhost:3000/messages/system/123' \
 --header 'Authorization: Bearer YOUR_TOKEN' \
@@ -1792,6 +1825,7 @@ curl --location --request POST 'http://localhost:3000/messages/system/123' \
 ```
 
 **Response:**
+
 ```json
 {
   "status": 201,
@@ -1813,17 +1847,20 @@ curl --location --request POST 'http://localhost:3000/messages/system/123' \
 **Purpose:** Get all messages from a specific donor across all queries. This endpoint is restricted to users with ADMIN or SUPER_ADMIN roles.
 
 **Request:**
+
 - **Method:** GET
 - **URL:** `/messages/donor/{donorId}`
 - **Headers:** Requires JWT Authentication and Admin Role
 
 **cURL Example:**
+
 ```bash
 curl --location --request GET 'http://localhost:3000/messages/donor/donor_001' \
 --header 'Authorization: Bearer YOUR_TOKEN'
 ```
 
 **Response:**
+
 ```json
 {
   "status": 200,
@@ -1857,10 +1894,12 @@ curl --location --request GET 'http://localhost:3000/messages/donor/donor_001' \
 **Purpose:** Change the password for the currently authenticated user.
 
 **Request:**
+
 - **Method:** PUT
 - **URL:** `/users/me/password`
 - **Headers:** Requires JWT Authentication and Admin Role
 - **Body:**
+
 ```json
 {
   "currentPassword": "your_current_password",
@@ -1869,6 +1908,7 @@ curl --location --request GET 'http://localhost:3000/messages/donor/donor_001' \
 ```
 
 **cURL Example:**
+
 ```bash
 curl --location --request PUT 'http://localhost:3000/users/me/password' \
 --header 'Authorization: Bearer YOUR_TOKEN' \
@@ -1880,6 +1920,7 @@ curl --location --request PUT 'http://localhost:3000/users/me/password' \
 ```
 
 **Response:**
+
 ```json
 {
   "id": 123,
@@ -1895,11 +1936,13 @@ curl --location --request PUT 'http://localhost:3000/users/me/password' \
 ```
 
 **Error Responses:**
+
 - **401 Unauthorized** - Current password is incorrect
 - **400 Bad Request** - New password must be different from the current password
 - **400 Bad Request** - New password must be at least 8 characters long
 
 **Notes:**
+
 - The endpoint requires the current password to be provided for security verification.
 - The new password must be at least 8 characters long.
 - The new password must be different from the current password.
@@ -1910,10 +1953,12 @@ curl --location --request PUT 'http://localhost:3000/users/me/password' \
 **Purpose:** Upload a new avatar image for the currently authenticated user.
 
 **Request:**
+
 - **Method:** POST
 - **URL:** `/users/me/avatar`
 - **Headers:** Requires JWT Authentication and Admin Role
 - **Body:**
+
 ```json
 {
   "avatar": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAAIAAgDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAb/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCdABmX/9k="
@@ -1921,6 +1966,7 @@ curl --location --request PUT 'http://localhost:3000/users/me/password' \
 ```
 
 **cURL Example:**
+
 ```bash
 curl --location --request POST 'http://localhost:3000/users/me/avatar' \
 --header 'Authorization: Bearer YOUR_TOKEN' \
@@ -1931,6 +1977,7 @@ curl --location --request POST 'http://localhost:3000/users/me/avatar' \
 ```
 
 **Response:**
+
 ```json
 {
   "id": 123,
@@ -1946,11 +1993,13 @@ curl --location --request POST 'http://localhost:3000/users/me/avatar' \
 ```
 
 **Error Responses:**
+
 - **400 Bad Request** - No image provided
 - **400 Bad Request** - Invalid image format. Must be a valid base64 encoded JPEG, PNG, or GIF
 - **400 Bad Request** - Image size exceeds the limit of 4MB
 
 **Notes:**
+
 - The avatar must be provided as a base64-encoded image string.
 - Supported image formats are JPEG, PNG, and GIF.
 - The maximum file size is 4MB.
