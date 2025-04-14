@@ -10,10 +10,11 @@ import {
 import { Server, Socket } from 'socket.io';
 import { Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
 
 @WebSocketGateway({
   cors: {
-    origin: ['http://localhost:3000', 'https://proof-client.vercel.app', 'https://collectwithproof.vercel.app/'],
+    origin: process.env.CORS_ORIGINS?.split(',') || [],
     credentials: true,
   },
   path: '/socket',

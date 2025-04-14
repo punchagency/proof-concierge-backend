@@ -6,22 +6,20 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { json, urlencoded } from 'express';
+import { ConfigService } from '@nestjs/config';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  const configService = app.get(ConfigService);
 
   // Increase request size limit for large payloads (e.g., avatar uploads)
   app.use(json({ limit: '10mb' }));
   app.use(urlencoded({ extended: true, limit: '10mb' }));
 
   // Enable CORS for client-side development
+  const corsOrigins = configService.get<string>('CORS_ORIGINS')?.split(',') || [];
   app.enableCors({
-    origin: [
-      'https://proof-concierge.vercel.app',
-      'http://localhost:3000',
-      'https://collectwithproof.vercel.app',
-      'https://proof-client.vercel.app/',
-    ],
+    origin: corsOrigins,
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     credentials: true,
   });
