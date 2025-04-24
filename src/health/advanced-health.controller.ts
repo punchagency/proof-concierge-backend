@@ -27,27 +27,31 @@ export class AdvancedHealthController {
   @Header('Content-Type', 'text/html')
   @ApiOperation({ summary: 'Get advanced health check information' })
   async check(@Res({ passthrough: true }) res: Response) {
-    const [
-      database,
-      storage,
-      memory,
-      frontend,
-      donorQueries,
-      emailService,
-    ] = await Promise.all([
+    // Get frontend URLs - support both single string and comma-separated list
+    const frontendUrlConfig = this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3000';
+    const frontendUrls = frontendUrlConfig.split(',').map(url => url.trim());
+
+    // Prepare base health check promises
+    const healthCheckPromises = [
       this.healthService.checkDatabase(),
       this.healthService.checkDiskStorage(),
       this.healthService.checkMemory(),
-      this.healthService.checkExternalService(this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3000', 2000),
       this.healthService.checkDonorQueriesHealth(),
       this.healthService.checkEmailService(),
-    ]);
+    ];
 
-    // Create a modified frontend result that uses warning instead of down
-    const frontendResult = {
-      ...frontend,
-      status: frontend.status === 'down' ? 'warning' : frontend.status
-    };
+    // Add frontend checks
+    const frontendChecks = frontendUrls.map(url => 
+      this.healthService.checkExternalService(url, 2000)
+    );
+
+    const results = await Promise.all([...healthCheckPromises, ...frontendChecks]);
+    
+    // Extract results
+    const [database, storage, memory, donorQueries, emailService, ...frontendResults] = results;
+
+    // Aggregate frontend results
+    const frontendResult = this.aggregateFrontendResults(frontendResults, frontendUrls);
 
     const statusList = [
       database.status,
@@ -605,5 +609,44 @@ export class AdvancedHealthController {
       </body>
       </html>
     `;
+  }
+
+  /**
+   * Aggregates results from multiple frontend health checks
+   */
+  private aggregateFrontendResults(results: any[], urls: string[]): any {
+    // If only one result, use it directly
+    if (results.length === 1) {
+      const result = { ...results[0] };
+      result.status = result.status === 'down' ? 'warning' : result.status;
+      return result;
+    }
+    
+    // For multiple results, create a combined result
+    const downServices = results.filter(r => r.status === 'down');
+    const upServices = results.filter(r => r.status === 'up');
+    
+    // Create a comprehensive message
+    const messages = results.map((result, index) => 
+      `${urls[index]}: ${result.status}${result.message ? ` (${result.message})` : ''}`
+    );
+    
+    return {
+      status: downServices.length === results.length ? 'down' : 
+              upServices.length === results.length ? 'up' : 'warning',
+      message: `${upServices.length}/${results.length} frontend services are up`,
+      details: {
+        services: urls.map((url, index) => ({
+          url,
+          status: results[index].status,
+          message: results[index].message,
+          statusCode: results[index].statusCode,
+          responseTime: results[index].responseTime
+        })),
+        servicesUp: upServices.length,
+        servicesDown: downServices.length,
+      },
+      serviceMessages: messages
+    };
   }
 } 
