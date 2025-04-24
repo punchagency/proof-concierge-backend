@@ -63,7 +63,7 @@
     "passport-jwt": "^4.0.1",
     "passport-local": "^1.0.0",
     "pg": "^8.13.3",
-    "prisma": "^6.4.1",
+    "prisma": "^6.6.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "socket.io": "^4.8.1",
@@ -121,5 +121,17 @@
   },
   "engines": {
     "node": "20.x"
+  },
+  "pnpm": {
+    "ignoredBuiltDependencies": [
+      "@prisma/engines",
+      "prisma",
+      "@prisma/client"
+    ],
+    "onlyBuiltDependencies": [
+      "@prisma/engines",
+      "prisma",
+      "@prisma/client"
+    ]
   }
 }

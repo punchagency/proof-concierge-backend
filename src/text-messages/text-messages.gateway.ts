@@ -10,7 +10,6 @@ import {
 import { Server, Socket } from 'socket.io';
 import { Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { ConfigService } from '@nestjs/config';
 
 @WebSocketGateway({
   cors: {
@@ -210,10 +209,12 @@ export class TextMessagesGateway
       senderType,
       timestamp: new Date().toISOString(),
     });
-    
-    this.logger.log(`Emitted messagesRead event. Ticket ID: ${ticketId}, SenderType: ${senderType}`);
+
+    this.logger.log(
+      `Emitted messagesRead event. Ticket ID: ${ticketId}, SenderType: ${senderType}`,
+    );
   }
-  
+
   // Notify when a call starts
   notifyCallStarted(ticketId: string, callData: any) {
     const eventData = {
@@ -225,16 +226,18 @@ export class TextMessagesGateway
       initiatedBy: callData.initiatedBy,
       timestamp: new Date().toISOString(),
     };
-    
+
     this.server.to(`ticket-${ticketId}`).emit('activeCallStarted', eventData);
     // Also notify all admins for dashboard updates
     this.server.to('admins').emit('activeCallStarted', eventData);
-    
-    this.logger.log(`Emitted activeCallStarted event. Ticket ID: ${ticketId}, Call ID: ${callData.id}`);
-    
+
+    this.logger.log(
+      `Emitted activeCallStarted event. Ticket ID: ${ticketId}, Call ID: ${callData.id}`,
+    );
+
     return eventData;
   }
-  
+
   // Notify when a call ends
   notifyCallEnded(ticketId: string, callId: string) {
     const eventData = {
@@ -242,13 +245,15 @@ export class TextMessagesGateway
       callId,
       timestamp: new Date().toISOString(),
     };
-    
+
     this.server.to(`ticket-${ticketId}`).emit('activeCallEnded', eventData);
     // Also notify all admins for dashboard updates
     this.server.to('admins').emit('activeCallEnded', eventData);
-    
-    this.logger.log(`Emitted activeCallEnded event. Ticket ID: ${ticketId}, Call ID: ${callId}`);
-    
+
+    this.logger.log(
+      `Emitted activeCallEnded event. Ticket ID: ${ticketId}, Call ID: ${callId}`,
+    );
+
     return eventData;
   }
 
@@ -264,16 +269,21 @@ export class TextMessagesGateway
       createdAt: ticketData.createdAt,
       timestamp: new Date().toISOString(),
     };
-    
+
     // Broadcast to all admins
     this.server.to('admins').emit('newTicket', eventData);
     this.logger.log(`Emitted newTicket event. Ticket ID: ${ticketData.id}`);
-    
+
     return eventData;
   }
-  
+
   // Notify when a ticket status changes
-  notifyTicketStatusChanged(ticketId: string, oldStatus: string, newStatus: string, adminId?: number) {
+  notifyTicketStatusChanged(
+    ticketId: string,
+    oldStatus: string,
+    newStatus: string,
+    adminId?: number,
+  ) {
     const eventData = {
       ticketId,
       oldStatus,
@@ -281,26 +291,32 @@ export class TextMessagesGateway
       adminId,
       timestamp: new Date().toISOString(),
     };
-    
+
     // Notify the specific ticket room
     this.server.to(`ticket-${ticketId}`).emit('ticketStatusChanged', eventData);
     // Also notify all admins for dashboard updates
     this.server.to('admins').emit('ticketStatusChanged', eventData);
-    
-    this.logger.log(`Emitted ticketStatusChanged event. Ticket ID: ${ticketId}, Status: ${oldStatus} -> ${newStatus}`);
-    
+
+    this.logger.log(
+      `Emitted ticketStatusChanged event. Ticket ID: ${ticketId}, Status: ${oldStatus} -> ${newStatus}`,
+    );
+
     return eventData;
   }
-  
+
   // Notify when a ticket is transferred
-  notifyTicketTransferred(ticketId: string, fromAdminId: number, toAdminId: number) {
+  notifyTicketTransferred(
+    ticketId: string,
+    fromAdminId: number,
+    toAdminId: number,
+  ) {
     const eventData = {
       ticketId,
       fromAdminId,
       toAdminId,
       timestamp: new Date().toISOString(),
     };
-    
+
     // Notify the specific ticket room
     this.server.to(`ticket-${ticketId}`).emit('ticketTransferred', eventData);
     // Also notify specific admins
@@ -308,9 +324,11 @@ export class TextMessagesGateway
     this.server.to(`user-${toAdminId}`).emit('ticketTransferred', eventData);
     // Also notify all admins for dashboard updates
     this.server.to('admins').emit('ticketTransferred', eventData);
-    
-    this.logger.log(`Emitted ticketTransferred event. Ticket ID: ${ticketId}, From: ${fromAdminId}, To: ${toAdminId}`);
-    
+
+    this.logger.log(
+      `Emitted ticketTransferred event. Ticket ID: ${ticketId}, From: ${fromAdminId}, To: ${toAdminId}`,
+    );
+
     return eventData;
   }
 }
